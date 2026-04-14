@@ -50,20 +50,15 @@ class Commands(commands.Cog):
             rank_raw = await riot.get_rank(puuid, region)
             print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}", flush=True)
 
-            print(f"[Register] Fetching match history...", flush=True)
-            match_ids = await riot.get_recent_match_ids(puuid, region, count=5)
-            print(f"[Register] Got {len(match_ids)} match ids", flush=True)
-
+            print(f"[Register] Fetching champion mastery...", flush=True)
+            await riot._ensure_champion_map()
+            mastery = await riot.get_top_mastery(puuid, region, count=3)
             champ_pool = []
-            for mid in match_ids[:3]:
-                m = await riot.get_match(mid, region)
-                if m:
-                    p = riot.extract_participant(m, puuid)
-                    if p:
-                        champ = p.get("championName", "")
-                        if champ and champ not in champ_pool:
-                            champ_pool.append(champ)
-            print(f"[Register] Champ pool: {champ_pool}", flush=True)
+            for m in mastery:
+                name = riot.champion_name_by_id(m.get("championId", 0))
+                if name and name not in champ_pool:
+                    champ_pool.append(name)
+            print(f"[Register] Champ pool (mastery): {champ_pool}", flush=True)
 
             house   = kingdom.generate_house(champ_pool)
             riot_id = f"{game_name}#{tag_line}"
@@ -331,6 +326,10 @@ class Commands(commands.Cog):
         wager = duel["wager"]
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("You don't have enough gold to cover the wager.", ephemeral=True); return
+
+        # Defer before the slow narration API call
+        await interaction.response.defer()
+
         c_power = kingdom.compute_power(state.user_data[challenger_id])
         d_power = kingdom.compute_power(state.user_data[uid])
         total   = c_power + d_power
@@ -354,7 +353,7 @@ class Commands(commands.Cog):
         embed.add_field(name="😔 Shame",    value=f'"{shame}" — 24h lockout or win a joust to clear', inline=False)
         if cleared_shame:
             embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # ── /setannouncements ─────────────────────────────────────────────────
 
@@ -394,6 +393,29 @@ class Commands(commands.Cog):
         target = member or interaction.user
         lines  = [f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}" for a in target.activities]
         await interaction.response.send_message(f"**{target}**\n" + ("\n".join(lines) or "*No activities.*"), ephemeral=True)
+
+    # ── /cleardata ────────────────────────────────────────────────────────
+
+    @app_commands.command(name="cleardata", description="[Admin] Wipe all kingdom data. This cannot be undone.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def cleardata(self, interaction: discord.Interaction, confirm: str = ""):
+        if confirm.lower() != "yes":
+            await interaction.response.send_message(
+                "This will **permanently delete** all houses, gold, territory, and records.\n"
+                "Run `/cleardata confirm:yes` to confirm.",
+                ephemeral=True,
+            )
+            return
+        count = len(state.user_data)
+        state.user_data.clear()
+        state.pending_duels.clear()
+        state.active_games.clear()
+        storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+        print(f"[Admin] {interaction.user} cleared all data ({count} houses)", flush=True)
+        await interaction.response.send_message(
+            f"*The chronicles have been burned. {count} house(s) erased from history.*",
+            ephemeral=True,
+        )
 
     # ── /rules ───────────────────────────────────────────────────────────
 

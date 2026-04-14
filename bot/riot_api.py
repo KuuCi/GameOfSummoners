@@ -10,6 +10,33 @@ from bot.config import ROUTING
 API_KEY = os.getenv("RIOT_API_KEY", "")
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 
+# Cache for champion ID → name mapping from Data Dragon
+_champion_id_to_name: dict[int, str] = {}
+
+async def _ensure_champion_map() -> None:
+    """Fetch champion data from Data Dragon once and cache it."""
+    if _champion_id_to_name:
+        return
+    try:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
+            async with s.get("https://ddragon.leagueoflegends.com/api/versions.json") as r:
+                if r.status != 200:
+                    return
+                versions = await r.json()
+            version = versions[0]
+            async with s.get(f"https://ddragon.leagueoflegends.com/cdn/{version}/data/en_US/champion.json") as r:
+                if r.status != 200:
+                    return
+                data = await r.json()
+            for name, info in data.get("data", {}).items():
+                _champion_id_to_name[int(info["key"])] = name
+        print(f"[Riot] Loaded {len(_champion_id_to_name)} champions from Data Dragon v{version}", flush=True)
+    except Exception as e:
+        print(f"[Riot] Data Dragon error: {e}", flush=True)
+
+def champion_name_by_id(champion_id: int) -> Optional[str]:
+    return _champion_id_to_name.get(champion_id)
+
 def _headers() -> dict:
     return {"X-Riot-Token": API_KEY}
 
@@ -62,6 +89,20 @@ async def get_rank(puuid: str, region: str) -> Optional[dict]:
     except Exception as e:
         print(f"[Riot] Rank error: {e}", flush=True)
         return None
+
+async def get_top_mastery(puuid: str, region: str, count: int = 3) -> list[dict]:
+    url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top?count={count}"
+    print(f"[Riot] GET top mastery ({region})", flush=True)
+    try:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
+            async with s.get(url, headers=_headers()) as r:
+                print(f"[Riot] Mastery status: {r.status}", flush=True)
+                if r.status != 200:
+                    return []
+                return await r.json()
+    except Exception as e:
+        print(f"[Riot] Mastery error: {e}", flush=True)
+        return []
 
 async def get_recent_match_ids(puuid: str, region: str, count: int = 5) -> list[str]:
     routing = _route(region)
