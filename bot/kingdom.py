@@ -8,6 +8,7 @@ from bot.config import (
     SHAME_TITLES, GLORY_TITLES, WIN_GOLD, LOSS_GOLD, SURRENDER_PENALTY,
     PENTA_BONUS, RANK_UP_BONUS, RANK_DOWN_PENALTY, TERRITORY_PER_WIN,
     BACKER_WIN_SHARE, BACKER_LOSS_SHARE, BACKER_PENTA_BONUS,
+    CHAMPION_REGIONS,
 )
 
 SIGILS = [
@@ -28,8 +29,12 @@ def generate_house(champion_pool: list[str]) -> dict:
     sigil = random.choice(SIGILS)
     color = random.choice(HOUSE_COLORS)
     if champion_pool:
-        champs = ", ".join(champion_pool[:3])
-        flavor = f"Forged in the shadow of {champs}."
+        regions = []
+        for champ in champion_pool:
+            region = CHAMPION_REGIONS.get(champ, "Runeterra")
+            if region not in regions:
+                regions.append(region)
+        flavor = f"Forged in the shadow of {', '.join(regions)}."
     else:
         flavor = "Their origins are shrouded in mystery."
     return {"name": name, "motto": motto, "sigil": sigil, "color": color, "flavor": flavor}

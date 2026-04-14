@@ -66,8 +66,8 @@ IN_GAME_STATE     = "In Game"
 
 # ── House Generation ─────────────────────────
 HOUSE_ADJECTIVES = [
-    "Iron", "Storm", "Void", "Silver", "Gilded", "Crimson", "Twilight",
-    "Ashen", "Golden", "Obsidian", "Cursed", "Blessed", "Fallen", "Rising",
+    "Storm", "Void", "Gilded", "Crimson", "Twilight",
+    "Ashen", "Obsidian", "Cursed", "Blessed", "Fallen", "Rising",
     "Shattered", "Ancient", "Infernal", "Celestial", "Forsaken", "Radiant",
 ]
 HOUSE_NOUNS = [
@@ -86,8 +86,6 @@ HOUSE_MOTTOS = [
 # ── Shame & Glory Titles ─────────────────────
 SHAME_TITLES = [
     "The Inting Menace",
-    "Professional Feeder",
-    "Hardstuck Forever",
     "Courier for the Enemy",
     "Village Idiot",
     "Bottom of the Food Chain",
@@ -107,3 +105,73 @@ GLORY_TITLES = [
 
 # ── Narration ────────────────────────────────
 NARRATION_MODEL = "claude-sonnet-4-20250514"
+
+# ── Champion → Runeterra Region ─────────────
+# Keys use Riot API champion names (match-v5 participant.championName)
+CHAMPION_REGIONS: dict[str, str] = {
+    # Demacia
+    "Garen": "Demacia", "Lux": "Demacia", "JarvanIV": "Demacia", "XinZhao": "Demacia",
+    "Fiora": "Demacia", "Quinn": "Demacia", "Vayne": "Demacia", "Shyvana": "Demacia",
+    "Galio": "Demacia", "Poppy": "Demacia", "Sona": "Demacia", "Kayle": "Demacia",
+    "Morgana": "Demacia", "Sylas": "Demacia",
+    # Noxus
+    "Darius": "Noxus", "Draven": "Noxus", "Katarina": "Noxus", "Talon": "Noxus",
+    "Swain": "Noxus", "Cassiopeia": "Noxus", "Samira": "Noxus", "Rell": "Noxus",
+    "Sion": "Noxus", "Kled": "Noxus", "Riven": "Noxus", "LeBlanc": "Noxus",
+    "Vladimir": "Noxus", "Ambessa": "Noxus",
+    # Ionia
+    "Ahri": "Ionia", "Yasuo": "Ionia", "Yone": "Ionia", "Akali": "Ionia",
+    "Shen": "Ionia", "Zed": "Ionia", "Kennen": "Ionia", "Irelia": "Ionia",
+    "Karma": "Ionia", "LeeSin": "Ionia", "MasterYi": "Ionia", "MonkeyKing": "Ionia",
+    "Syndra": "Ionia", "Varus": "Ionia", "Xayah": "Ionia", "Rakan": "Ionia",
+    "Kayn": "Ionia", "Lillia": "Ionia", "Sett": "Ionia", "Jhin": "Ionia",
+    # Freljord
+    "Ashe": "Freljord", "Tryndamere": "Freljord", "Sejuani": "Freljord",
+    "Braum": "Freljord", "Lissandra": "Freljord", "Anivia": "Freljord",
+    "Nunu": "Freljord", "Olaf": "Freljord", "Trundle": "Freljord",
+    "Volibear": "Freljord", "Ornn": "Freljord", "Udyr": "Freljord", "Gnar": "Freljord",
+    "Aurora": "Freljord",
+    # Piltover
+    "Caitlyn": "Piltover", "Vi": "Piltover", "Jayce": "Piltover", "Ezreal": "Piltover",
+    "Heimerdinger": "Piltover", "Orianna": "Piltover", "Camille": "Piltover",
+    "Seraphine": "Piltover",
+    # Zaun
+    "Jinx": "Zaun", "Ekko": "Zaun", "Viktor": "Zaun", "Warwick": "Zaun",
+    "Singed": "Zaun", "Twitch": "Zaun", "Zac": "Zaun", "DrMundo": "Zaun",
+    "Ziggs": "Zaun", "Blitzcrank": "Zaun", "Urgot": "Zaun", "Renata": "Zaun",
+    # Shadow Isles
+    "Thresh": "Shadow Isles", "Hecarim": "Shadow Isles", "Kalista": "Shadow Isles",
+    "Karthus": "Shadow Isles", "Yorick": "Shadow Isles", "Maokai": "Shadow Isles",
+    "Elise": "Shadow Isles", "Viego": "Shadow Isles", "Gwen": "Shadow Isles",
+    "Vex": "Shadow Isles",
+    # Bilgewater
+    "Gangplank": "Bilgewater", "MissFortune": "Bilgewater", "TwistedFate": "Bilgewater",
+    "Graves": "Bilgewater", "Nautilus": "Bilgewater", "Pyke": "Bilgewater",
+    "Illaoi": "Bilgewater", "Fizz": "Bilgewater", "TahmKench": "Bilgewater",
+    # Shurima
+    "Azir": "Shurima", "Sivir": "Shurima", "Xerath": "Shurima", "Nasus": "Shurima",
+    "Renekton": "Shurima", "Amumu": "Shurima", "Rammus": "Shurima", "Skarner": "Shurima",
+    "Taliyah": "Shurima", "KSante": "Shurima", "Akshan": "Shurima",
+    # Targon
+    "Leona": "Targon", "Diana": "Targon", "Pantheon": "Targon", "Taric": "Targon",
+    "Zoe": "Targon", "Aphelios": "Targon", "Soraka": "Targon", "AurelionSol": "Targon",
+    # The Void
+    "Chogath": "The Void", "Khazix": "The Void", "KogMaw": "The Void",
+    "RekSai": "The Void", "VelKoz": "The Void", "Kaisa": "The Void",
+    "Kassadin": "The Void", "Malzahar": "The Void", "BelVeth": "The Void",
+    # Bandle City
+    "Teemo": "Bandle City", "Tristana": "Bandle City", "Lulu": "Bandle City",
+    "Veigar": "Bandle City", "Rumble": "Bandle City", "Corki": "Bandle City",
+    "Yuumi": "Bandle City",
+    # Ixtal
+    "Qiyana": "Ixtal", "Nidalee": "Ixtal", "Zyra": "Ixtal", "Rengar": "Ixtal",
+    "Neeko": "Ixtal", "Malphite": "Ixtal", "Milio": "Ixtal",
+    # Runeterra (no fixed region)
+    "Fiddlesticks": "Runeterra", "Kindred": "Runeterra", "Bard": "Runeterra",
+    "Ryze": "Runeterra", "Janna": "Runeterra", "Zilean": "Runeterra",
+    "Brand": "Runeterra", "Annie": "Runeterra", "Nocturne": "Runeterra",
+    "Evelynn": "Runeterra", "Shaco": "Runeterra", "Mordekaiser": "Runeterra",
+    "Lucian": "Runeterra", "Senna": "Runeterra", "Smolder": "Runeterra",
+    "Naafiri": "Runeterra", "Hwei": "Runeterra", "Briar": "Runeterra",
+    "Melvina": "Runeterra",
+}
