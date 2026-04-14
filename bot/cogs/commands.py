@@ -358,7 +358,7 @@ class Commands(commands.Cog):
     # ── /setannouncements ─────────────────────────────────────────────────
 
     @app_commands.command(name="setannouncements", description="[Admin] Set the kingdom announcements channel.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def setannouncements(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.announcement_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -367,7 +367,7 @@ class Commands(commands.Cog):
     # ── /setshame ────────────────────────────────────────────────────────
 
     @app_commands.command(name="setshame", description="[Admin] Set the Wall of Shame channel.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def setshame(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.shame_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -376,7 +376,7 @@ class Commands(commands.Cog):
     # ── /setgold ─────────────────────────────────────────────────────────
 
     @app_commands.command(name="setgold", description="[Admin] Set a lord's gold balance.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def setgold(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         uid = str(member.id)
         if uid not in state.user_data:
@@ -388,7 +388,7 @@ class Commands(commands.Cog):
     # ── /debugpresence ───────────────────────────────────────────────────
 
     @app_commands.command(name="debugpresence", description="[Admin] Debug Discord activity for a member.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def debugpresence(self, interaction: discord.Interaction, member: discord.Member = None):
         target = member or interaction.user
         lines  = [f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}" for a in target.activities]
@@ -397,7 +397,7 @@ class Commands(commands.Cog):
     # ── /cleardata ────────────────────────────────────────────────────────
 
     @app_commands.command(name="cleardata", description="[Admin] Wipe all kingdom data. This cannot be undone.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
     async def cleardata(self, interaction: discord.Interaction, confirm: str = ""):
         if confirm.lower() != "yes":
             await interaction.response.send_message(
