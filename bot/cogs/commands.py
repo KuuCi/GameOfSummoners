@@ -153,8 +153,30 @@ class Commands(commands.Cog):
             return
         await interaction.response.defer(thinking=True)
         user  = state.user_data[uid]
-        text  = await narration.oracle_prediction(user["house"]["name"], champion, user["stats"]["wins"], user["stats"]["losses"])
+
+        # Fetch champion-specific recent stats
+        champ_stats = await riot.get_champion_recent_stats(user["puuid"], user["region"], champion)
+
+        text  = await narration.oracle_prediction(
+            user["house"]["name"], champion,
+            user["stats"]["wins"], user["stats"]["losses"],
+            champ_stats,
+        )
         embed = discord.Embed(title="🔮  The Oracle Speaks", description=f"*{text}*", color=0x8E44AD)
+
+        # Add stats footer if we found games
+        if champ_stats.get("found", 0) > 0:
+            streak_icon = "🔥" if champ_stats["streak_type"] == "win" else "💀"
+            embed.add_field(
+                name=f"📊 {champion} — Last {champ_stats['found']} ranked",
+                value=(
+                    f"{champ_stats['wins']}W {champ_stats['losses']}L · "
+                    f"Avg {champ_stats['avg_kda']} · {champ_stats['avg_cs']} CS · "
+                    f"{streak_icon} {champ_stats['streak']}{champ_stats['streak_type'][0].upper()} streak"
+                ),
+                inline=False,
+            )
+
         embed.set_footer(text="The Oracle's prophecies are binding. Go forth.")
         await interaction.followup.send(embed=embed)
 
@@ -411,7 +433,6 @@ class Commands(commands.Cog):
     # ── /setannouncements ─────────────────────────────────────────────────
 
     @app_commands.command(name="setannouncements", description="[Admin] Set the kingdom announcements channel.")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def setannouncements(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.announcement_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -420,7 +441,6 @@ class Commands(commands.Cog):
     # ── /setshame ────────────────────────────────────────────────────────
 
     @app_commands.command(name="setshame", description="[Admin] Set the Wall of Shame channel.")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def setshame(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.shame_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -429,7 +449,6 @@ class Commands(commands.Cog):
     # ── /setgold ─────────────────────────────────────────────────────────
 
     @app_commands.command(name="setgold", description="[Admin] Set a lord's gold balance.")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def setgold(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         uid = str(member.id)
         if uid not in state.user_data:
@@ -441,7 +460,6 @@ class Commands(commands.Cog):
     # ── /debugpresence ───────────────────────────────────────────────────
 
     @app_commands.command(name="debugpresence", description="[Admin] Debug Discord activity for a member.")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def debugpresence(self, interaction: discord.Interaction, member: discord.Member = None):
         # Use guild cache for full presence data — interaction.user often lacks activities
         if member:

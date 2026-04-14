@@ -75,14 +75,30 @@ async def narrate_rank_down(house_name: str, new_tier: str, new_div: str) -> str
     )
     return await _ask(SYSTEM_HERALD, prompt, max_tokens=150)
 
-async def oracle_prediction(house_name: str, champion: str, recent_wins: int, recent_losses: int) -> str:
-    record = f"{recent_wins}W {recent_losses}L recently"
+async def oracle_prediction(house_name: str, champion: str, recent_wins: int, recent_losses: int, champ_stats: dict = None) -> str:
+    record = f"{recent_wins}W {recent_losses}L overall"
+
+    champ_context = ""
+    if champ_stats and champ_stats.get("found", 0) > 0:
+        cs = champ_stats
+        champ_context = (
+            f" On {champion} specifically, they are {cs['wins']}W {cs['losses']}L "
+            f"in their last {cs['found']} ranked games with an average KDA of {cs['avg_kda']}. "
+        )
+        if cs["streak"] >= 2:
+            streak_word = "winning" if cs["streak_type"] == "win" else "losing"
+            champ_context += f"They are on a {cs['streak']}-game {streak_word} streak on this champion. "
+    else:
+        champ_context = f" They have no recent ranked games on {champion} — this could be a first-time-in-ranked pick. "
+
     prompt = (
-        f"House '{house_name}' is about to queue on {champion}. Their record is {record}. "
-        f"Give a short prophecy about the game ahead. Can be ominous, can be hype, but make it feel earned based on the record. "
+        f"House '{house_name}' is about to queue on {champion}. Their kingdom record is {record}."
+        f"{champ_context}"
+        f"Give a short prophecy about the game ahead. Reference their actual stats — if they're feeding on this champ, warn them. "
+        f"If they're on a heater, hype it. If they've never played it, question their sanity. "
         f"2-3 sentences, herald voice."
     )
-    return await _ask(SYSTEM_HERALD, prompt, max_tokens=180)
+    return await _ask(SYSTEM_HERALD, prompt, max_tokens=200)
 
 async def weekly_recap(events: list[str], server_name: str) -> str:
     events_text = "\n".join(f"- {e}" for e in events[:20])

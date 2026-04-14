@@ -193,3 +193,52 @@ def format_kda(p: dict) -> str:
     k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
     ratio = (k + a) / max(d, 1)
     return f"{k}/{d}/{a} ({ratio:.2f} KDA)"
+
+async def get_champion_recent_stats(puuid: str, region: str, champion: str, scan_count: int = 15) -> dict:
+    """Scan recent ranked games for stats on a specific champion."""
+    match_ids = await get_recent_match_ids(puuid, region, count=scan_count)
+    games = []
+    for mid in match_ids:
+        m = await get_match(mid, region)
+        if not m:
+            continue
+        p = extract_participant(m, puuid)
+        if not p:
+            continue
+        if p.get("championName", "").lower() == champion.lower():
+            games.append({
+                "win": p.get("win", False),
+                "kills": p.get("kills", 0),
+                "deaths": p.get("deaths", 0),
+                "assists": p.get("assists", 0),
+                "cs": p.get("totalMinionsKilled", 0) + p.get("neutralMinionsKilled", 0),
+            })
+
+    if not games:
+        return {"found": 0}
+
+    wins   = sum(1 for g in games if g["win"])
+    losses = len(games) - wins
+    avg_k  = sum(g["kills"] for g in games) / len(games)
+    avg_d  = sum(g["deaths"] for g in games) / len(games)
+    avg_a  = sum(g["assists"] for g in games) / len(games)
+    avg_cs = sum(g["cs"] for g in games) / len(games)
+
+    # Current streak on this champ
+    streak = 0
+    streak_type = "win" if games[0]["win"] else "loss"
+    for g in games:
+        if g["win"] == games[0]["win"]:
+            streak += 1
+        else:
+            break
+
+    return {
+        "found": len(games),
+        "wins": wins,
+        "losses": losses,
+        "avg_kda": f"{avg_k:.1f}/{avg_d:.1f}/{avg_a:.1f}",
+        "avg_cs": f"{avg_cs:.0f}",
+        "streak": streak,
+        "streak_type": streak_type,
+    }
