@@ -96,12 +96,12 @@ SHAME_TITLES = [
     "Carried by Teammates",
     "The Reason We Lost",
     "Negative KDA haver",
-    "Mid diff (bad)",
+    "Killable Demon King",
 ]
 GLORY_TITLES = [
-    "The Unkillable Demon King", "Scourge of the Rift", "The Silent Carry",
-    "Lady of the Pentakill", "The Unseen Hand", "Dragon Sovereign",
-    "The Baron Taker", "Keeper of the Void", "Herald of the Baron",
+    "The Unkillable Demon King", "Scourge of the Rift", "The Edge of Infinity",
+    "6Pek Acolyte", "The Unseen Hand", "Dragon Sovereign", 
+    "Keeper of the Void", "Herald of the Baron",
     "The Uncontested", "Champion of Champions",
 ]
 
