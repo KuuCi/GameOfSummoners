@@ -19,39 +19,39 @@ def _route(region: str) -> str:
 async def get_account_by_riot_id(game_name: str, tag_line: str, region: str) -> Optional[dict]:
     routing = _route(region)
     url = f"https://{routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
-    print(f"[Riot] GET account {game_name}#{tag_line} ({routing})")
+    print(f"[Riot] GET account {game_name}#{tag_line} ({routing})", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
-                print(f"[Riot] Account status: {r.status}")
+                print(f"[Riot] Account status: {r.status}", flush=True)
                 if r.status != 200:
                     return None
                 return await r.json()
     except Exception as e:
-        print(f"[Riot] Account error: {e}")
+        print(f"[Riot] Account error: {e}", flush=True)
         return None
 
 async def get_summoner_by_puuid(puuid: str, region: str) -> Optional[dict]:
     url = f"https://{region}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
-    print(f"[Riot] GET summoner by puuid ({region})")
+    print(f"[Riot] GET summoner by puuid ({region})", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
-                print(f"[Riot] Summoner status: {r.status}")
+                print(f"[Riot] Summoner status: {r.status}", flush=True)
                 if r.status != 200:
                     return None
                 return await r.json()
     except Exception as e:
-        print(f"[Riot] Summoner error: {e}")
+        print(f"[Riot] Summoner error: {e}", flush=True)
         return None
 
 async def get_rank(summoner_id: str, region: str) -> Optional[dict]:
     url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}"
-    print(f"[Riot] GET rank ({region})")
+    print(f"[Riot] GET rank ({region})", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
-                print(f"[Riot] Rank status: {r.status}")
+                print(f"[Riot] Rank status: {r.status}", flush=True)
                 if r.status != 200:
                     return None
                 entries = await r.json()
@@ -60,7 +60,7 @@ async def get_rank(summoner_id: str, region: str) -> Optional[dict]:
                         return e
                 return None
     except Exception as e:
-        print(f"[Riot] Rank error: {e}")
+        print(f"[Riot] Rank error: {e}", flush=True)
         return None
 
 async def get_recent_match_ids(puuid: str, region: str, count: int = 5) -> list[str]:
@@ -69,31 +69,31 @@ async def get_recent_match_ids(puuid: str, region: str, count: int = 5) -> list[
         f"https://{routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
         f"?queue=420&type=ranked&count={count}"
     )
-    print(f"[Riot] GET match ids ({routing})")
+    print(f"[Riot] GET match ids ({routing})", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
-                print(f"[Riot] Match ids status: {r.status}")
+                print(f"[Riot] Match ids status: {r.status}", flush=True)
                 if r.status != 200:
                     return []
                 return await r.json()
     except Exception as e:
-        print(f"[Riot] Match ids error: {e}")
+        print(f"[Riot] Match ids error: {e}", flush=True)
         return []
 
 async def get_match(match_id: str, region: str) -> Optional[dict]:
     routing = _route(region)
     url = f"https://{routing}.api.riotgames.com/lol/match/v5/matches/{match_id}"
-    print(f"[Riot] GET match {match_id}")
+    print(f"[Riot] GET match {match_id}", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
-                print(f"[Riot] Match status: {r.status}")
+                print(f"[Riot] Match status: {r.status}", flush=True)
                 if r.status != 200:
                     return None
                 return await r.json()
     except Exception as e:
-        print(f"[Riot] Match error: {e}")
+        print(f"[Riot] Match error: {e}", flush=True)
         return None
 
 def extract_participant(match: dict, puuid: str) -> Optional[dict]:

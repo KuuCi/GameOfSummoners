@@ -35,53 +35,63 @@ class Commands(commands.Cog):
     async def register(self, interaction: discord.Interaction, game_name: str, tag_line: str, region: str = DEFAULT_REGION):
         await interaction.response.defer(thinking=True)
         uid = str(interaction.user.id)
-        print(f"[Register] {interaction.user} → {game_name}#{tag_line} {region}")
+        print(f"[Register] {interaction.user} → {game_name}#{tag_line} {region}", flush=True)
 
-        account = await riot.get_account_by_riot_id(game_name, tag_line, region)
-        if not account:
-            print(f"[Register] Failed: account not found")
-            await interaction.followup.send("Could not find that Riot ID. Check the name, tag, and region.")
-            return
+        try:
+            account = await riot.get_account_by_riot_id(game_name, tag_line, region)
+            if not account:
+                print(f"[Register] Failed: account not found", flush=True)
+                await interaction.followup.send("Could not find that Riot ID. Check the name, tag, and region.")
+                return
 
-        puuid = account["puuid"]
-        print(f"[Register] Got puuid: {puuid[:8]}...")
+            puuid = account["puuid"]
+            print(f"[Register] Got puuid: {puuid[:8]}...", flush=True)
 
-        summoner = await riot.get_summoner_by_puuid(puuid, region)
-        if not summoner:
-            print(f"[Register] Failed: summoner not found")
-            await interaction.followup.send("Could not fetch summoner data.")
-            return
+            summoner = await riot.get_summoner_by_puuid(puuid, region)
+            if not summoner:
+                print(f"[Register] Failed: summoner not found", flush=True)
+                await interaction.followup.send("Could not fetch summoner data.")
+                return
 
-        summoner_id = summoner["id"]
-        print(f"[Register] Got summoner id")
+            summoner_id = summoner["id"]
+            print(f"[Register] Got summoner id", flush=True)
 
-        rank_raw = await riot.get_rank(summoner_id, region)
-        print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}")
+            rank_raw = await riot.get_rank(summoner_id, region)
+            print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}", flush=True)
 
-        print(f"[Register] Fetching match history...")
-        match_ids = await riot.get_recent_match_ids(puuid, region, count=5)
-        print(f"[Register] Got {len(match_ids)} match ids")
+            print(f"[Register] Fetching match history...", flush=True)
+            match_ids = await riot.get_recent_match_ids(puuid, region, count=5)
+            print(f"[Register] Got {len(match_ids)} match ids", flush=True)
 
-        champ_pool = []
-        for mid in match_ids[:3]:
-            m = await riot.get_match(mid, region)
-            if m:
-                p = riot.extract_participant(m, puuid)
-                if p:
-                    champ_pool.append(p.get("championName", ""))
-        print(f"[Register] Champ pool: {champ_pool}")
+            champ_pool = []
+            for mid in match_ids[:3]:
+                m = await riot.get_match(mid, region)
+                if m:
+                    p = riot.extract_participant(m, puuid)
+                    if p:
+                        champ_pool.append(p.get("championName", ""))
+            print(f"[Register] Champ pool: {champ_pool}", flush=True)
 
-        house   = kingdom.generate_house(champ_pool)
-        riot_id = f"{game_name}#{tag_line}"
-        entry   = kingdom.new_user_entry(riot_id, puuid, summoner_id, region.lower(), house, rank_raw)
+            house   = kingdom.generate_house(champ_pool)
+            riot_id = f"{game_name}#{tag_line}"
+            entry   = kingdom.new_user_entry(riot_id, puuid, summoner_id, region.lower(), house, rank_raw)
 
-        state.user_data[uid] = entry
-        storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-        print(f"[Register] Done — {house['name']} created for {interaction.user}")
+            state.user_data[uid] = entry
+            storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+            print(f"[Register] Done — {house['name']} created for {interaction.user}", flush=True)
 
-        embed = helpers.house_embed(entry, interaction.user)
-        embed.set_footer(text=f"Welcome to the kingdom, {house['name']}. May your lanes never feed.")
-        await interaction.followup.send(embed=embed)
+            embed = helpers.house_embed(entry, interaction.user)
+            embed.set_footer(text=f"Welcome to the kingdom, {house['name']}. May your lanes never feed.")
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"[Register] ERROR: {e}", flush=True)
+            try:
+                await interaction.followup.send(f"Something went wrong during registration: `{e}`")
+            except Exception:
+                pass
 
     # ── /unregister ──────────────────────────────────────────────────────
 
