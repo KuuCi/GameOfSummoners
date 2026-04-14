@@ -60,7 +60,9 @@ class Commands(commands.Cog):
                 if m:
                     p = riot.extract_participant(m, puuid)
                     if p:
-                        champ_pool.append(p.get("championName", ""))
+                        champ = p.get("championName", "")
+                        if champ and champ not in champ_pool:
+                            champ_pool.append(champ)
             print(f"[Register] Champ pool: {champ_pool}", flush=True)
 
             house   = kingdom.generate_house(champ_pool)
@@ -267,7 +269,31 @@ class Commands(commands.Cog):
             await interaction.response.send_message(f"Wager must be between {DUEL_WAGER_MIN} and {DUEL_WAGER_MAX} gold.", ephemeral=True); return
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("Not enough gold.", ephemeral=True); return
-        state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": time.time() + DUEL_EXPIRY}
+
+        # ── One joust at a time ──────────────────────────────────────────
+        now = time.time()
+        # Clean expired duels first
+        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
+        for cid in expired:
+            del state.pending_duels[cid]
+
+        # Check if challenger already has a pending joust (as challenger)
+        if uid in state.pending_duels:
+            await interaction.response.send_message("You already have a pending joust. Wait for it to be accepted or expire.", ephemeral=True); return
+
+        # Check if challenger is already a target in another joust
+        for cid, d in state.pending_duels.items():
+            if d["target_id"] == uid:
+                await interaction.response.send_message("You have a pending joust challenge to answer first. Use `/accept_joust` or wait for it to expire.", ephemeral=True); return
+
+        # Check if the target already has a pending joust (as challenger or target)
+        if ouid in state.pending_duels:
+            await interaction.response.send_message(f"{opponent.display_name} already has a pending joust.", ephemeral=True); return
+        for cid, d in state.pending_duels.items():
+            if d["target_id"] == ouid:
+                await interaction.response.send_message(f"{opponent.display_name} already has a pending joust.", ephemeral=True); return
+
+        state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": now + DUEL_EXPIRY}
         embed = discord.Embed(
             title="🏇  A Joust Has Been Called!",
             description=(
@@ -285,9 +311,16 @@ class Commands(commands.Cog):
     @app_commands.command(name="accept_joust", description="Accept a pending joust challenge.")
     async def accept_joust(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
+
+        # Clean expired duels first
+        now = time.time()
+        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
+        for cid in expired:
+            del state.pending_duels[cid]
+
         challenger_id = None
         for cid, duel in state.pending_duels.items():
-            if duel["target_id"] == uid and duel["expires_at"] > time.time():
+            if duel["target_id"] == uid:
                 challenger_id = cid
                 break
         if not challenger_id:
