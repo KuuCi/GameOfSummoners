@@ -7,7 +7,6 @@ from typing import Dict, Any
 # discord_id (str) → {
 #   "riot_id":        str | None,      # None for non-League lords
 #   "puuid":          str | None,
-#   "summoner_id":    str | None,
 #   "region":         str | None,
 #   "house":          { name, motto, sigil, color, flavor },
 #   "gold":           int,

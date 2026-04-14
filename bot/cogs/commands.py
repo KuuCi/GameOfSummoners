@@ -47,16 +47,7 @@ class Commands(commands.Cog):
             puuid = account["puuid"]
             print(f"[Register] Got puuid: {puuid[:8]}...", flush=True)
 
-            summoner = await riot.get_summoner_by_puuid(puuid, region)
-            if not summoner:
-                print(f"[Register] Failed: summoner not found", flush=True)
-                await interaction.followup.send("Could not fetch summoner data.")
-                return
-
-            summoner_id = summoner["id"]
-            print(f"[Register] Got summoner id", flush=True)
-
-            rank_raw = await riot.get_rank(summoner_id, region)
+            rank_raw = await riot.get_rank(puuid, region)
             print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}", flush=True)
 
             print(f"[Register] Fetching match history...", flush=True)
@@ -74,7 +65,7 @@ class Commands(commands.Cog):
 
             house   = kingdom.generate_house(champ_pool)
             riot_id = f"{game_name}#{tag_line}"
-            entry   = kingdom.new_user_entry(riot_id, puuid, summoner_id, region.lower(), house, rank_raw)
+            entry   = kingdom.new_user_entry(riot_id, puuid, region.lower(), house, rank_raw)
 
             state.user_data[uid] = entry
             storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)

@@ -45,9 +45,9 @@ async def get_summoner_by_puuid(puuid: str, region: str) -> Optional[dict]:
         print(f"[Riot] Summoner error: {e}", flush=True)
         return None
 
-async def get_rank(summoner_id: str, region: str) -> Optional[dict]:
-    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}"
-    print(f"[Riot] GET rank ({region})", flush=True)
+async def get_rank(puuid: str, region: str) -> Optional[dict]:
+    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
+    print(f"[Riot] GET rank by puuid ({region})", flush=True)
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:

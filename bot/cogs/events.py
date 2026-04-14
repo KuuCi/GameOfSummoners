@@ -73,7 +73,7 @@ class Events(commands.Cog):
 
         # ── Lord's own result ─────────────────────────────────────────────
         match_delta = kingdom.apply_match_result(user, participant, game_duration)
-        new_rank    = await riot.get_rank(user["summoner_id"], user["region"])
+        new_rank    = await riot.get_rank(user["puuid"], user["region"])
         rank_change = kingdom.apply_rank_change(user, new_rank)
 
         # ── Narration ─────────────────────────────────────────────────────
