@@ -35,6 +35,8 @@ async def create_bot():
         for cog in COGS:
             await bot.load_extension(cog)
         synced = await bot.tree.sync()
+        for guild in bot.guilds:
+            await bot.tree.sync(guild=guild)
         print(f"[Court] Logged in as {bot.user} | {len(synced)} commands synced")
         print(f"[Court] {len(state.user_data)} houses loaded from storage")
 
