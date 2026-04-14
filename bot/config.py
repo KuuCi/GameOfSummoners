@@ -78,7 +78,7 @@ HOUSE_NOUNS = [
 HOUSE_MOTTOS = [
     "We Scale.", "Death Before Surrender.", "Gold Flows Upward.",
     "In Chaos, Carry.", "The Lane Never Forgets.", "Wards Win Wars.",
-    "Support Gap.", "6Pek Followers.", "Gank Or Be Ganked.",
+    "Support Gap.", "Acolyte of 6Pek.", "Gank Or Be Ganked.",
     "Honor The Reset Timer.", "Vision Is Power.", "Tilt Builds Character.",
     "We Were 4v5.", "Push. Push. Push.", "Top Diff.",
 ]
