@@ -25,7 +25,6 @@ class Commands(commands.Cog):
         self.bot = bot
 
     # ── /register ────────────────────────────────────────────────────────
-    # Riot ID is optional — non-League lords get a house without tracking.
 
     @app_commands.command(name="register", description="Forge your house and join the Summoner's Court.")
     @app_commands.describe(
@@ -33,31 +32,36 @@ class Commands(commands.Cog):
         tag_line="Your Riot ID tag (e.g. NA1).",
         region="Your region (na1, euw1, kr…).",
     )
-    async def register(
-        self,
-        interaction: discord.Interaction,
-        game_name: str,
-        tag_line: str,
-        region: str = DEFAULT_REGION,
-    ):
+    async def register(self, interaction: discord.Interaction, game_name: str, tag_line: str, region: str = DEFAULT_REGION):
         await interaction.response.defer(thinking=True)
         uid = str(interaction.user.id)
+        print(f"[Register] {interaction.user} → {game_name}#{tag_line} {region}")
 
         account = await riot.get_account_by_riot_id(game_name, tag_line, region)
         if not account:
+            print(f"[Register] Failed: account not found")
             await interaction.followup.send("Could not find that Riot ID. Check the name, tag, and region.")
             return
 
-        puuid    = account["puuid"]
+        puuid = account["puuid"]
+        print(f"[Register] Got puuid: {puuid[:8]}...")
+
         summoner = await riot.get_summoner_by_puuid(puuid, region)
         if not summoner:
+            print(f"[Register] Failed: summoner not found")
             await interaction.followup.send("Could not fetch summoner data.")
             return
 
         summoner_id = summoner["id"]
-        rank_raw    = await riot.get_rank(summoner_id, region)
+        print(f"[Register] Got summoner id")
 
-        match_ids  = await riot.get_recent_match_ids(puuid, region, count=5)
+        rank_raw = await riot.get_rank(summoner_id, region)
+        print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}")
+
+        print(f"[Register] Fetching match history...")
+        match_ids = await riot.get_recent_match_ids(puuid, region, count=5)
+        print(f"[Register] Got {len(match_ids)} match ids")
+
         champ_pool = []
         for mid in match_ids[:3]:
             m = await riot.get_match(mid, region)
@@ -65,6 +69,7 @@ class Commands(commands.Cog):
                 p = riot.extract_participant(m, puuid)
                 if p:
                     champ_pool.append(p.get("championName", ""))
+        print(f"[Register] Champ pool: {champ_pool}")
 
         house   = kingdom.generate_house(champ_pool)
         riot_id = f"{game_name}#{tag_line}"
@@ -72,6 +77,7 @@ class Commands(commands.Cog):
 
         state.user_data[uid] = entry
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+        print(f"[Register] Done — {house['name']} created for {interaction.user}")
 
         embed = helpers.house_embed(entry, interaction.user)
         embed.set_footer(text=f"Welcome to the kingdom, {house['name']}. May your lanes never feed.")
@@ -88,6 +94,7 @@ class Commands(commands.Cog):
         house_name = state.user_data[uid]["house"]["name"]
         del state.user_data[uid]
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+        print(f"[Unregister] {interaction.user} dissolved {house_name}")
         await interaction.response.send_message(
             f"*{house_name} has been struck from the chronicles. Their banners burn.*", ephemeral=True
         )
@@ -100,16 +107,14 @@ class Commands(commands.Cog):
         target = member or interaction.user
         uid    = str(target.id)
         if uid not in state.user_data:
-            await interaction.response.send_message(
-                f"{target.display_name} has not pledged their house yet.", ephemeral=True
-            )
+            await interaction.response.send_message(f"{target.display_name} has not pledged their house yet.", ephemeral=True)
             return
         embed = helpers.house_embed(state.user_data[uid], target)
         await interaction.response.send_message(embed=embed)
 
     # ── /scout ────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="scout", description="View a lord's public kingdom standing — rank, power, and record.")
+    @app_commands.command(name="scout", description="View a lord's public kingdom standing.")
     @app_commands.describe(member="The lord to scout.")
     async def scout(self, interaction: discord.Interaction, member: discord.Member):
         uid = str(member.id)
@@ -126,7 +131,6 @@ class Commands(commands.Cog):
         if not state.user_data:
             await interaction.response.send_message("The kingdom is empty.", ephemeral=True)
             return
-
         sorted_users = sorted(state.user_data.items(), key=lambda x: kingdom.compute_power(x[1]), reverse=True)
         medals = ["🥇", "🥈", "🥉"]
         lines  = []
@@ -135,7 +139,6 @@ class Commands(commands.Cog):
             h     = u["house"]
             tag   = f" *(backing <@{u['backing']}>)*" if u.get("backing") else ""
             lines.append(f"{medal} {h['sigil']} **{h['name']}** — ⚡ {kingdom.compute_power(u):,}  🪙 {u['gold']:,}{tag}")
-
         embed = discord.Embed(title="⚡ Power Rankings", color=0xF1C40F)
         embed.description = "\n".join(lines) if lines else "*The kingdom is empty.*"
         await interaction.response.send_message(embed=embed)
@@ -150,11 +153,9 @@ class Commands(commands.Cog):
             await interaction.response.send_message("You must register first.", ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
-        user   = state.user_data[uid]
-        text   = await narration.oracle_prediction(
-            user["house"]["name"], champion, user["stats"]["wins"], user["stats"]["losses"]
-        )
-        embed  = discord.Embed(title="🔮  The Oracle Speaks", description=f"*{text}*", color=0x8E44AD)
+        user  = state.user_data[uid]
+        text  = await narration.oracle_prediction(user["house"]["name"], champion, user["stats"]["wins"], user["stats"]["losses"])
+        embed = discord.Embed(title="🔮  The Oracle Speaks", description=f"*{text}*", color=0x8E44AD)
         embed.set_footer(text="The Oracle's prophecies are binding. Go forth.")
         await interaction.followup.send(embed=embed)
 
@@ -165,33 +166,26 @@ class Commands(commands.Cog):
     async def back(self, interaction: discord.Interaction, lord: discord.Member):
         uid  = str(interaction.user.id)
         luid = str(lord.id)
-
         if uid not in state.user_data:
             await interaction.response.send_message("Register your house first with `/register`.", ephemeral=True); return
         if luid not in state.user_data:
             await interaction.response.send_message(f"{lord.display_name} has no house.", ephemeral=True); return
         if uid == luid:
             await interaction.response.send_message("You cannot back yourself.", ephemeral=True); return
-
         current = state.user_data[uid].get("backing")
         if current:
             current_name = state.user_data.get(current, {}).get("house", {}).get("name", "another lord")
-            await interaction.response.send_message(
-                f"You already back **{current_name}**. Use `/unback` first to switch allegiance.", ephemeral=True
-            ); return
-
+            await interaction.response.send_message(f"You already back **{current_name}**. Use `/unback` first.", ephemeral=True); return
         state.user_data[uid]["backing"] = luid
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-
         lord_house = state.user_data[luid]["house"]
         embed = discord.Embed(
-            title=f"🛡️  Allegiance Pledged",
+            title="🛡️  Allegiance Pledged",
             description=(
                 f"**{state.user_data[uid]['house']['name']}** has pledged their banner to "
                 f"**{lord_house['sigil']} {lord_house['name']}**.\n\n"
                 f"*\"{lord_house['motto']}\"*\n\n"
-                f"You will earn **+{BACKER_WIN_SHARE} gold** on their victories "
-                f"and bleed **{BACKER_LOSS_SHARE} gold** on their defeats."
+                f"You will earn **+{BACKER_WIN_SHARE} gold** on their victories and bleed **{BACKER_LOSS_SHARE} gold** on their defeats."
             ),
             color=lord_house["color"],
         )
@@ -206,60 +200,41 @@ class Commands(commands.Cog):
             await interaction.response.send_message("You are not registered.", ephemeral=True); return
         if not state.user_data[uid].get("backing"):
             await interaction.response.send_message("You have no allegiance to renounce.", ephemeral=True); return
-
-        lord_name = state.user_data.get(
-            state.user_data[uid]["backing"], {}
-        ).get("house", {}).get("name", "their lord")
-
+        lord_name = state.user_data.get(state.user_data[uid]["backing"], {}).get("house", {}).get("name", "their lord")
         state.user_data[uid]["backing"]      = None
         state.user_data[uid]["active_wager"] = None
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-        await interaction.response.send_message(
-            f"*Your house has renounced its allegiance to {lord_name}. The banners are burned.*", ephemeral=True
-        )
+        await interaction.response.send_message(f"*Your house has renounced its allegiance to {lord_name}.*", ephemeral=True)
 
     # ── /wager ────────────────────────────────────────────────────────────
 
     @app_commands.command(name="wager", description="Bet on whether your backed lord will win or lose their next game.")
-    @app_commands.describe(
-        outcome="Your prediction.",
-        amount=f"Gold to wager. Correct pays 2x.",
-    )
+    @app_commands.describe(outcome="Your prediction.", amount="Gold to wager. Correct pays 2x.")
     @app_commands.choices(outcome=[
         app_commands.Choice(name="Win",  value="win"),
         app_commands.Choice(name="Loss", value="loss"),
     ])
     async def wager(self, interaction: discord.Interaction, outcome: app_commands.Choice[str], amount: int):
         uid = str(interaction.user.id)
-
         if uid not in state.user_data:
             await interaction.response.send_message("Register your house first.", ephemeral=True); return
         if not state.user_data[uid].get("backing"):
             await interaction.response.send_message("You must back a lord first with `/back`.", ephemeral=True); return
         if state.user_data[uid].get("active_wager"):
-            await interaction.response.send_message("You already have an active wager. Wait for your lord's next game.", ephemeral=True); return
+            await interaction.response.send_message("You already have an active wager.", ephemeral=True); return
         if not (BACKER_WAGER_MIN <= amount <= BACKER_WAGER_MAX):
-            await interaction.response.send_message(
-                f"Wager must be between {BACKER_WAGER_MIN} and {BACKER_WAGER_MAX} gold.", ephemeral=True
-            ); return
+            await interaction.response.send_message(f"Wager must be between {BACKER_WAGER_MIN} and {BACKER_WAGER_MAX} gold.", ephemeral=True); return
         if state.user_data[uid]["gold"] < amount:
             await interaction.response.send_message("Not enough gold.", ephemeral=True); return
-
         lord_id   = state.user_data[uid]["backing"]
         lord_name = state.user_data.get(lord_id, {}).get("house", {}).get("name", "your lord")
-
-        state.user_data[uid]["active_wager"] = {
-            "lord_id": lord_id,
-            "outcome": outcome.value,
-            "amount":  amount,
-        }
+        state.user_data[uid]["active_wager"] = {"lord_id": lord_id, "outcome": outcome.value, "amount": amount}
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-
         embed = discord.Embed(
             title="🎲  Wager Placed",
             description=(
-                f"**{state.user_data[uid]['house']['name']}** has wagered **{amount} gold** "
-                f"that **{lord_name}** will **{'WIN' if outcome.value == 'win' else 'LOSE'}** their next game.\n\n"
+                f"**{state.user_data[uid]['house']['name']}** wagered **{amount} gold** that "
+                f"**{lord_name}** will **{'WIN' if outcome.value == 'win' else 'LOSE'}** their next game.\n\n"
                 f"Correct → **+{amount * 2} 🪙**  ·  Wrong → **-{amount} 🪙**"
             ),
             color=0xF39C12,
@@ -269,14 +244,10 @@ class Commands(commands.Cog):
     # ── /joust ────────────────────────────────────────────────────────────
 
     @app_commands.command(name="joust", description="Challenge another lord to a joust.")
-    @app_commands.describe(
-        opponent="The lord you wish to challenge.",
-        wager="Gold each side puts in. Winner takes the pool.",
-    )
+    @app_commands.describe(opponent="The lord you wish to challenge.", wager="Gold each side puts in. Winner takes the pool.")
     async def joust(self, interaction: discord.Interaction, opponent: discord.Member, wager: int):
         uid  = str(interaction.user.id)
         ouid = str(opponent.id)
-
         if uid not in state.user_data:
             await interaction.response.send_message("Register first.", ephemeral=True); return
         if ouid not in state.user_data:
@@ -285,33 +256,22 @@ class Commands(commands.Cog):
             await interaction.response.send_message("You cannot joust yourself.", ephemeral=True); return
         active_shame = kingdom.is_shamed(state.user_data[uid])
         if active_shame:
-            expires = state.user_data[uid]["shame"]["expires_at"]
-            remaining = int((expires - time.time()) / 3600)
+            expires   = state.user_data[uid]["shame"]["expires_at"]
+            remaining = max(1, int((expires - time.time()) / 3600))
             await interaction.response.send_message(
-                f"You bear the title **\"{active_shame}\"** and may not joust for another ~{remaining}h. "
-                f"Win a joust to clear it early.", ephemeral=True
+                f"You bear **\"{active_shame}\"** and may not joust for another ~{remaining}h. Win a joust to clear it early.",
+                ephemeral=True
             ); return
         if not (DUEL_WAGER_MIN <= wager <= DUEL_WAGER_MAX):
-            await interaction.response.send_message(
-                f"Wager must be between {DUEL_WAGER_MIN} and {DUEL_WAGER_MAX} gold.", ephemeral=True
-            ); return
+            await interaction.response.send_message(f"Wager must be between {DUEL_WAGER_MIN} and {DUEL_WAGER_MAX} gold.", ephemeral=True); return
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("Not enough gold.", ephemeral=True); return
-
-        state.pending_duels[uid] = {
-            "target_id":  ouid,
-            "wager":      wager,
-            "expires_at": time.time() + DUEL_EXPIRY,
-        }
-
-        challenger_house = state.user_data[uid]["house"]["name"]
-        defender_house   = state.user_data[ouid]["house"]["name"]
-        pool             = wager * 2
-
+        state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": time.time() + DUEL_EXPIRY}
         embed = discord.Embed(
             title="🏇  A Joust Has Been Called!",
             description=(
-                f"**{challenger_house}** challenges **{defender_house}** for a pool of **{pool:,} gold**!\n"
+                f"**{state.user_data[uid]['house']['name']}** challenges "
+                f"**{state.user_data[ouid]['house']['name']}** for a pool of **{wager*2:,} gold**!\n"
                 f"Each side puts in {wager:,} 🪙. Winner takes all.\n\n"
                 f"{opponent.mention} — use `/accept_joust` to accept, or ignore to let it expire in 1 hour."
             ),
@@ -333,58 +293,33 @@ class Commands(commands.Cog):
             await interaction.response.send_message("No pending joust found for you.", ephemeral=True); return
         if uid not in state.user_data or challenger_id not in state.user_data:
             await interaction.response.send_message("One combatant has no house.", ephemeral=True); return
-
         duel  = state.pending_duels.pop(challenger_id)
         wager = duel["wager"]
-        pool  = wager * 2
-
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("You don't have enough gold to cover the wager.", ephemeral=True); return
-
-        # Power-ratio weighted random draw
         c_power = kingdom.compute_power(state.user_data[challenger_id])
         d_power = kingdom.compute_power(state.user_data[uid])
         total   = c_power + d_power
         c_prob  = c_power / total if total > 0 else 0.5
-
         challenger_wins = random.random() < c_prob
         winner_id, loser_id = (challenger_id, uid) if challenger_wins else (uid, challenger_id)
         winner = state.user_data[winner_id]
         loser  = state.user_data[loser_id]
-
-        # Deduct wager from both, give pool to winner
         loser["gold"]  = max(0, loser["gold"] - wager)
-        winner["gold"] = max(0, winner["gold"] + wager)  # net gain is just the opponent's wager
-
-        # Shame the loser, redeem the winner if they had shame
-        shame          = kingdom.award_shame_title(loser)
-        cleared_shame  = kingdom.clear_shame(winner)
-
+        winner["gold"] = max(0, winner["gold"] + wager)
+        shame         = kingdom.award_shame_title(loser)
+        cleared_shame = kingdom.clear_shame(winner)
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-
-        narr = await narration.narrate_duel_result(winner["house"]["name"], loser["house"]["name"], wager)
-
+        print(f"[Joust] {winner['house']['name']} beat {loser['house']['name']} for {wager} gold")
+        narr        = await narration.narrate_duel_result(winner["house"]["name"], loser["house"]["name"], wager)
         winner_prob = f"{c_prob*100:.0f}%" if challenger_wins else f"{(1-c_prob)*100:.0f}%"
         loser_prob  = f"{(1-c_prob)*100:.0f}%" if challenger_wins else f"{c_prob*100:.0f}%"
-
-        embed = discord.Embed(
-            title="🏇  Joust Resolved!",
-            description=f"*{narr}*",
-            color=0xF39C12,
-        )
-        embed.add_field(
-            name="🏆 Victor",
-            value=f"{winner['house']['sigil']} **{winner['house']['name']}**  +{wager:,} 🪙  *(had {winner_prob} odds)*",
-            inline=False,
-        )
-        embed.add_field(
-            name="💀 Defeated",
-            value=f"{loser['house']['sigil']} **{loser['house']['name']}**  -{wager:,} 🪙  *(had {loser_prob} odds)*",
-            inline=False,
-        )
-        embed.add_field(name="😔 Shame",  value=f'"{shame}" — cannot joust until redeemed', inline=False)
+        embed = discord.Embed(title="🏇  Joust Resolved!", description=f"*{narr}*", color=0xF39C12)
+        embed.add_field(name="🏆 Victor",   value=f"{winner['house']['sigil']} **{winner['house']['name']}**  +{wager:,} 🪙  *(had {winner_prob} odds)*", inline=False)
+        embed.add_field(name="💀 Defeated", value=f"{loser['house']['sigil']} **{loser['house']['name']}**  -{wager:,} 🪙  *(had {loser_prob} odds)*",  inline=False)
+        embed.add_field(name="😔 Shame",    value=f'"{shame}" — 24h lockout or win a joust to clear', inline=False)
         if cleared_shame:
-            embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} has shed the title "{cleared_shame}"', inline=False)
+            embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
         await interaction.response.send_message(embed=embed)
 
     # ── /setannouncements ─────────────────────────────────────────────────
@@ -423,48 +358,37 @@ class Commands(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def debugpresence(self, interaction: discord.Interaction, member: discord.Member = None):
         target = member or interaction.user
-        lines  = [
-            f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}"
-            for a in target.activities
-        ]
-        await interaction.response.send_message(
-            f"**{target}**\n" + ("\n".join(lines) or "*No activities.*"), ephemeral=True
-        )
+        lines  = [f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}" for a in target.activities]
+        await interaction.response.send_message(f"**{target}**\n" + ("\n".join(lines) or "*No activities.*"), ephemeral=True)
 
     # ── /rules ───────────────────────────────────────────────────────────
 
     @app_commands.command(name="rules", description="The laws of the Summoner's Court.")
     async def rules(self, interaction: discord.Interaction):
         from bot.config import (
-            STARTING_GOLD, WIN_GOLD, LOSS_GOLD, SURRENDER_PENALTY,
-            PENTA_BONUS, RANK_UP_BONUS, RANK_DOWN_PENALTY,
-            BACKER_WIN_SHARE, BACKER_LOSS_SHARE, BACKER_PENTA_BONUS,
-            BACKER_WAGER_MIN, BACKER_WAGER_MAX,
+            STARTING_GOLD, WIN_GOLD, LOSS_GOLD, SURRENDER_PENALTY, PENTA_BONUS,
+            RANK_UP_BONUS, RANK_DOWN_PENALTY, BACKER_WIN_SHARE, BACKER_LOSS_SHARE,
+            BACKER_PENTA_BONUS, BACKER_WAGER_MIN, BACKER_WAGER_MAX,
         )
         embed = discord.Embed(title="📜  Laws of the Summoner's Court", color=0xF1C40F)
         embed.add_field(name="Starting Gold",   value=f"{STARTING_GOLD} 🪙",                  inline=True)
         embed.add_field(name="Win",             value=f"+{WIN_GOLD} 🪙",                       inline=True)
         embed.add_field(name="Loss",            value=f"{LOSS_GOLD} 🪙",                       inline=True)
-        embed.add_field(name="Early Surrender", value=f"{SURRENDER_PENALTY} 🪙 extra penalty", inline=True)
+        embed.add_field(name="Early Surrender", value=f"{SURRENDER_PENALTY} 🪙 extra",         inline=True)
         embed.add_field(name="Pentakill",       value=f"+{PENTA_BONUS} 🪙 💥",                 inline=True)
         embed.add_field(name="Rank Up",         value=f"+{RANK_UP_BONUS} 🪙 🎉",               inline=True)
         embed.add_field(name="Rank Down",       value=f"{RANK_DOWN_PENALTY} 🪙 🔔",            inline=True)
         embed.add_field(name="Joust Range",     value=f"{DUEL_WAGER_MIN}–{DUEL_WAGER_MAX} 🪙", inline=True)
         embed.add_field(
-            name="🛡️ Backing a Lord",
+            name="🛡️ Backing",
             value=(
-                f"Any lord can back another. On their lord's win: **+{BACKER_WIN_SHARE} 🪙**. "
-                f"On loss: **{BACKER_LOSS_SHARE} 🪙**. "
-                f"On pentakill: **+{BACKER_PENTA_BONUS} 🪙**.\n"
-                f"Use `/wager` to bet {BACKER_WAGER_MIN}–{BACKER_WAGER_MAX} 🪙 on a single game outcome (2x payout)."
+                f"+{BACKER_WIN_SHARE} on lord's win · {BACKER_LOSS_SHARE} on loss · "
+                f"+{BACKER_PENTA_BONUS} on pentakill\n"
+                f"Wagers: {BACKER_WAGER_MIN}–{BACKER_WAGER_MAX} 🪙 (2x payout)"
             ),
             inline=False,
         )
-        embed.add_field(
-            name="Power",
-            value="Gold + (Territory × 10). Everyone competes on the same leaderboard.",
-            inline=False,
-        )
+        embed.add_field(name="Power", value="Gold + (Territory × 10). Everyone on the same leaderboard.", inline=False)
         await interaction.response.send_message(embed=embed)
 
 
