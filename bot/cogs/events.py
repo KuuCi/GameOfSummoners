@@ -164,25 +164,87 @@ class Events(commands.Cog):
         state.active_wars[uid] = {"supporters": {}, "protesters": {}}
         print(f"[WarEffort] Opening war effort for {house['name']}", flush=True)
 
+        # Give the spectator API a moment to register the game
+        await asyncio.sleep(15)
+
+        # Fetch game intel in parallel
+        await riot._ensure_champion_map()
+        game_data = await riot.get_active_game(user["puuid"], user["region"])
+        streak    = await riot.get_recent_streak(user["puuid"], user["region"], count=5)
+
+        # Build streak text
+        streak_text = ""
+        if streak["type"] == "win" and streak["streak"] >= 2:
+            streak_text = f"🔥 **{streak['streak']}W streak** ({streak['record']})"
+        elif streak["type"] == "loss" and streak["streak"] >= 2:
+            streak_text = f"💀 **{streak['streak']}L streak** ({streak['record']})"
+        elif streak["record"]:
+            streak_text = f"📊 {streak['record']}"
+
+        # Build team comp text from spectator data
+        blue_team = ""
+        red_team  = ""
+        player_team = ""
+        if game_data and "participants" in game_data:
+            blue = []
+            red  = []
+            for p in game_data["participants"]:
+                champ_name = riot.champion_name_by_id(p.get("championId", 0)) or "?"
+                puuid = p.get("puuid", "")
+                # Mark our player
+                marker = " ⭐" if puuid == user["puuid"] else ""
+                if p.get("teamId") == 100:
+                    blue.append(f"{champ_name}{marker}")
+                else:
+                    red.append(f"{champ_name}{marker}")
+                if puuid == user["puuid"]:
+                    player_team = "Blue" if p.get("teamId") == 100 else "Red"
+
+            blue_team = " · ".join(blue) if blue else "Unknown"
+            red_team  = " · ".join(red) if red else "Unknown"
+            print(f"[WarEffort] Blue: {blue_team} | Red: {red_team} | Player on {player_team}", flush=True)
+        else:
+            print(f"[WarEffort] Spectator data unavailable", flush=True)
+
+        # Build embed
+        desc = f"**{member.display_name}** has entered a ranked game.\n"
+        if streak_text:
+            desc += f"{streak_text}\n"
+        desc += (
+            f"\n⚔️ **Join War Effort** — stake gold that they will conquer\n"
+            f"🏳️ **Protest** — stake gold that they will fall\n\n"
+            f"Pledge {WAR_EFFORT_MIN}–{WAR_EFFORT_MAX} 🪙 · *{WAR_EFFORT_WINDOW // 60} minutes to decide.*"
+        )
+
         embed = discord.Embed(
             title=f"📯  {house['sigil']} {house['name']} rides to war!",
-            description=(
-                f"**{member.display_name}** has entered a ranked game.\n\n"
-                f"⚔️ **Join War Effort** — stake gold that they will conquer\n"
-                f"🏳️ **Protest** — stake gold that they will fall\n\n"
-                f"Pledge {WAR_EFFORT_MIN}–{WAR_EFFORT_MAX} 🪙 · *{WAR_EFFORT_WINDOW // 60} minutes to decide.*"
-            ),
+            description=desc,
             color=house["color"],
         )
         embed.set_author(name=str(member), icon_url=member.display_avatar.url)
 
+        if blue_team:
+            blue_label = "🔵 Blue Side" + (" ⭐" if player_team == "Blue" else "")
+            red_label  = "🔴 Red Side" + (" ⭐" if player_team == "Red" else "")
+            embed.add_field(name=blue_label, value=blue_team, inline=False)
+            embed.add_field(name=red_label,  value=red_team,  inline=False)
+
         view = WarEffortView(uid)
+        posted = False
         for guild in self.bot.guilds:
             ch_id = state.announcement_channels.get(str(guild.id))
-            if ch_id:
-                ch = guild.get_channel(ch_id)
-                if ch:
-                    await ch.send(embed=embed, view=view)
+            if not ch_id:
+                print(f"[WarEffort] No announcements channel set for {guild.name} — use /setannouncements", flush=True)
+                continue
+            ch = guild.get_channel(ch_id)
+            if not ch:
+                print(f"[WarEffort] Channel {ch_id} not found in {guild.name} — was it deleted?", flush=True)
+                continue
+            await ch.send(embed=embed, view=view)
+            posted = True
+            print(f"[WarEffort] Posted to #{ch.name} in {guild.name}", flush=True)
+        if not posted:
+            print(f"[WarEffort] WARNING: Could not post anywhere — no valid announcements channel", flush=True)
 
     # ── Match result pipeline ────────────────────────────────────────────
 
@@ -422,10 +484,14 @@ class Events(commands.Cog):
     async def _broadcast(self, embed: discord.Embed):
         for guild in self.bot.guilds:
             ch_id = state.announcement_channels.get(str(guild.id))
-            if ch_id:
-                ch = guild.get_channel(ch_id)
-                if ch:
-                    await ch.send(embed=embed)
+            if not ch_id:
+                print(f"[Broadcast] No announcements channel for {guild.name}", flush=True)
+                continue
+            ch = guild.get_channel(ch_id)
+            if not ch:
+                print(f"[Broadcast] Channel {ch_id} not found in {guild.name}", flush=True)
+                continue
+            await ch.send(embed=embed)
 
     async def _broadcast_shame(self, embed: discord.Embed):
         for guild in self.bot.guilds:

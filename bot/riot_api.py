@@ -104,6 +104,52 @@ async def get_top_mastery(puuid: str, region: str, count: int = 3) -> list[dict]
         print(f"[Riot] Mastery error: {e}", flush=True)
         return []
 
+async def get_active_game(puuid: str, region: str) -> Optional[dict]:
+    url = f"https://{region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
+    print(f"[Riot] GET active game ({region})", flush=True)
+    try:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
+            async with s.get(url, headers=_headers()) as r:
+                print(f"[Riot] Active game status: {r.status}", flush=True)
+                if r.status != 200:
+                    return None
+                return await r.json()
+    except Exception as e:
+        print(f"[Riot] Active game error: {e}", flush=True)
+        return None
+
+async def get_recent_streak(puuid: str, region: str, count: int = 5) -> dict:
+    """Check the player's last N ranked games for win/loss streaks."""
+    match_ids = await get_recent_match_ids(puuid, region, count=count)
+    results = []
+    for mid in match_ids:
+        m = await get_match(mid, region)
+        if not m:
+            continue
+        p = extract_participant(m, puuid)
+        if p:
+            results.append(p.get("win", False))
+
+    if not results:
+        return {"streak": 0, "type": "none", "record": ""}
+
+    # Current streak
+    streak_type = "win" if results[0] else "loss"
+    streak = 0
+    for r in results:
+        if r == results[0]:
+            streak += 1
+        else:
+            break
+
+    wins   = sum(1 for r in results if r)
+    losses = len(results) - wins
+    return {
+        "streak": streak,
+        "type": streak_type,
+        "record": f"{wins}W {losses}L last {len(results)}",
+    }
+
 async def get_recent_match_ids(puuid: str, region: str, count: int = 5) -> list[str]:
     routing = _route(region)
     url = (
