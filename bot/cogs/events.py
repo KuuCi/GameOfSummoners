@@ -145,10 +145,14 @@ class Events(commands.Cog):
         now_in_game = is_in_lol_game(after)
 
         if not was_in_game and now_in_game:
+            house = state.user_data[uid]["house"]["name"]
+            print(f"[Presence] {house} ({after}) entered a game", flush=True)
             state.active_games[uid] = time.time()
             # Post war effort call to arms
             await self._post_war_effort(after, uid)
         elif was_in_game and not now_in_game:
+            house = state.user_data[uid]["house"]["name"]
+            print(f"[Presence] {house} ({after}) left game — fetching match in {MATCH_FETCH_DELAY}s", flush=True)
             del state.active_games[uid]
             self.bot.loop.create_task(self._fetch_match_after_delay(after))
 
@@ -158,6 +162,7 @@ class Events(commands.Cog):
         user  = state.user_data[uid]
         house = user["house"]
         state.active_wars[uid] = {"supporters": {}, "protesters": {}}
+        print(f"[WarEffort] Opening war effort for {house['name']}", flush=True)
 
         embed = discord.Embed(
             title=f"📯  {house['sigil']} {house['name']} rides to war!",
@@ -188,13 +193,17 @@ class Events(commands.Cog):
         if not user or not user.get("puuid"):
             return
 
+        print(f"[Match] Fetching latest match for {user['house']['name']}", flush=True)
         match_ids = await riot.get_recent_match_ids(user["puuid"], user["region"], count=1)
         if not match_ids:
+            print(f"[Match] No match IDs returned", flush=True)
             return
         match_id = match_ids[0]
         if match_id == user.get("last_match_id"):
+            print(f"[Match] Same match as last time ({match_id[:12]}...), skipping", flush=True)
             return
 
+        print(f"[Match] New match: {match_id}", flush=True)
         match = await riot.get_match(match_id, user["region"])
         if not match:
             return
@@ -208,6 +217,9 @@ class Events(commands.Cog):
 
         # ── Lord's own result ─────────────────────────────────────────────
         match_delta = kingdom.apply_match_result(user, participant, game_duration)
+        result = "WIN" if match_delta["won"] else "LOSS"
+        kda = f"{participant.get('kills',0)}/{participant.get('deaths',0)}/{participant.get('assists',0)}"
+        print(f"[Match] {user['house']['name']} — {result} on {champ} ({kda}) | {match_delta['delta']:+d} gold", flush=True)
         new_rank    = await riot.get_rank(user["puuid"], user["region"])
         rank_change = kingdom.apply_rank_change(user, new_rank)
 
@@ -253,6 +265,9 @@ class Events(commands.Cog):
         war_lines = []
         war = state.active_wars.pop(uid, None)
         if war:
+            sup_count = len(war.get("supporters", {}))
+            pro_count = len(war.get("protesters", {}))
+            print(f"[WarEffort] Resolving — {sup_count} supporter(s), {pro_count} protester(s)", flush=True)
             won = match_delta["won"]
             # Supporters win if player won, protesters win if player lost
             for sid, amount in war.get("supporters", {}).items():

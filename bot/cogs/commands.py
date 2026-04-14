@@ -443,9 +443,23 @@ class Commands(commands.Cog):
     @app_commands.command(name="debugpresence", description="[Admin] Debug Discord activity for a member.")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def debugpresence(self, interaction: discord.Interaction, member: discord.Member = None):
-        target = member or interaction.user
-        lines  = [f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}" for a in target.activities]
-        await interaction.response.send_message(f"**{target}**\n" + ("\n".join(lines) or "*No activities.*"), ephemeral=True)
+        # Use guild cache for full presence data — interaction.user often lacks activities
+        if member:
+            target = interaction.guild.get_member(member.id) or member
+        else:
+            target = interaction.guild.get_member(interaction.user.id) or interaction.user
+        lines = []
+        for a in target.activities:
+            lines.append(
+                f"`{type(a).__name__}` name={a.name!r} "
+                f"type={a.type!r} state={getattr(a,'state',None)!r} "
+                f"details={getattr(a,'details',None)!r}"
+            )
+        status = f"Status: `{target.status}`\n" if hasattr(target, 'status') else ""
+        await interaction.response.send_message(
+            f"**{target}**\n{status}" + ("\n".join(lines) or "*No activities detected. Check: Discord Settings → Activity Privacy → 'Display current activity as a status message' must be ON.*"),
+            ephemeral=True,
+        )
 
     # ── /cleardata ────────────────────────────────────────────────────────
 
