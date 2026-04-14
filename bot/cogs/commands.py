@@ -397,7 +397,6 @@ class Commands(commands.Cog):
     # ── /cleardata ────────────────────────────────────────────────────────
 
     @app_commands.command(name="cleardata", description="[Admin] Wipe all kingdom data. This cannot be undone.")
-    @app_commands.checks.has_permissions(manage_guild=True)
     async def cleardata(self, interaction: discord.Interaction, confirm: str = ""):
         if confirm.lower() != "yes":
             await interaction.response.send_message(
