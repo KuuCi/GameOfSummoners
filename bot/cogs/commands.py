@@ -17,6 +17,7 @@ import bot.riot_api  as riot
 from bot.config import (
     DUEL_WAGER_MIN, DUEL_WAGER_MAX, DUEL_EXPIRY, DEFAULT_REGION,
     BACKER_WAGER_MIN, BACKER_WAGER_MAX, BACKER_WIN_SHARE, BACKER_LOSS_SHARE,
+    JOUST_ODDS_COMPRESSION,
 )
 
 
@@ -333,7 +334,8 @@ class Commands(commands.Cog):
         c_power = kingdom.compute_power(state.user_data[challenger_id])
         d_power = kingdom.compute_power(state.user_data[uid])
         total   = c_power + d_power
-        c_prob  = c_power / total if total > 0 else 0.5
+        raw     = c_power / total if total > 0 else 0.5
+        c_prob  = 0.5 + (raw - 0.5) * JOUST_ODDS_COMPRESSION  # compress toward 50/50
         challenger_wins = random.random() < c_prob
         winner_id, loser_id = (challenger_id, uid) if challenger_wins else (uid, challenger_id)
         winner = state.user_data[winner_id]

@@ -35,3 +35,13 @@ announcement_channels: Dict[str, int] = {}
 
 # guild_id → channel_id for the Wall of Shame
 shame_channels: Dict[str, int] = {}
+
+# ── Voice activity tracking (in-memory, resets on restart) ──
+# discord_id → timestamp when they joined a voice channel
+voice_joined_at: Dict[str, float] = {}
+
+# discord_id → seconds accumulated in voice today
+voice_accumulated: Dict[str, float] = {}
+
+# discord_id → "YYYY-MM-DD" of last stipend claim
+voice_daily_claimed: Dict[str, str] = {}

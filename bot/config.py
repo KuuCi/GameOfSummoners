@@ -36,6 +36,15 @@ TERRITORY_PER_WIN     = 1
 TERRITORY_LOST_PER_LOSS = 0   # Territory is never lost — only won or declared via war
 TERRITORY_GOLD_VALUE  = 10    # Each territory tile is worth this much in power calculations
 
+# ── Daily Stipend ──────────────────────────
+DAILY_STIPEND         = 100   # Gold granted for 30 min in voice
+DAILY_STIPEND_CAP     = 100   # Only granted if below this amount (tops you up to cap)
+
+# ── Joust Odds ─────────────────────────────
+# Compresses raw power ratio toward 50/50. 0.0 = always 50/50, 1.0 = pure power ratio.
+# At 0.5: a 2:1 power lead gives ~58/42 odds instead of 67/33.
+JOUST_ODDS_COMPRESSION = 0.5
+
 # ── Riot API ────────────────────────────────
 # Supported regions → routing values
 ROUTING = {
@@ -66,8 +75,8 @@ IN_GAME_STATE     = "In Game"
 
 # ── House Generation ─────────────────────────
 HOUSE_ADJECTIVES = [
-    "Storm", "Void", "Gilded", "Crimson", "Twilight",
-    "Ashen", "Obsidian", "Cursed", "Blessed", "Fallen", "Rising",
+    "Iron", "Storm", "Void", "Silver", "Gilded", "Crimson", "Twilight",
+    "Ashen", "Golden", "Obsidian", "Cursed", "Blessed", "Fallen", "Rising",
     "Shattered", "Ancient", "Infernal", "Celestial", "Forsaken", "Radiant",
 ]
 HOUSE_NOUNS = [
@@ -78,7 +87,7 @@ HOUSE_NOUNS = [
 HOUSE_MOTTOS = [
     "We Scale.", "Death Before Surrender.", "Gold Flows Upward.",
     "In Chaos, Carry.", "The Lane Never Forgets.", "Wards Win Wars.",
-    "Support Gap.", "Acolyte of 6Pek.", "Gank Or Be Ganked.",
+    "Support Gap.", "6Pek Followers.", "Gank Or Be Ganked.",
     "Honor The Reset Timer.", "Vision Is Power.", "Tilt Builds Character.",
     "We Were 4v5.", "Push. Push. Push.", "Top Diff.",
 ]
@@ -86,6 +95,8 @@ HOUSE_MOTTOS = [
 # ── Shame & Glory Titles ─────────────────────
 SHAME_TITLES = [
     "The Inting Menace",
+    "Professional Feeder",
+    "Hardstuck Forever",
     "Courier for the Enemy",
     "Village Idiot",
     "Bottom of the Food Chain",

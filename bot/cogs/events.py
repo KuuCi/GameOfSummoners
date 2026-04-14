@@ -15,7 +15,12 @@ import bot.kingdom    as kingdom
 import bot.helpers    as helpers
 import bot.riot_api   as riot
 from bot.presence     import is_in_lol_game
-from bot.config       import MATCH_FETCH_DELAY, WEEKLY_RECAP_DAY, WEEKLY_RECAP_HOUR
+from bot.config       import (
+    MATCH_FETCH_DELAY, WEEKLY_RECAP_DAY, WEEKLY_RECAP_HOUR,
+    DAILY_STIPEND, DAILY_STIPEND_CAP,
+)
+
+VOICE_REQUIRED_SECONDS = 30 * 60  # 30 minutes in voice to earn stipend
 
 
 class Events(commands.Cog):
@@ -182,6 +187,60 @@ class Events(commands.Cog):
     @weekly_recap_task.before_loop
     async def before_weekly_recap(self):
         await self.bot.wait_until_ready()
+
+    # ── Voice Activity Stipend ─────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        uid   = str(member.id)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # Reset accumulated time if it's a new day
+        if state.voice_daily_claimed.get(uid) != today and uid in state.voice_accumulated:
+            # New day but hasn't claimed yet — keep accumulation
+            pass
+
+        was_in_voice = before.channel is not None
+        now_in_voice = after.channel is not None
+
+        # Joined voice
+        if not was_in_voice and now_in_voice:
+            state.voice_joined_at[uid] = time.time()
+            # Reset accumulation on new day
+            if state.voice_daily_claimed.get(uid, "") < today:
+                state.voice_accumulated.pop(uid, None)
+            return
+
+        # Left voice (or moved channels — still in voice, so skip)
+        if was_in_voice and not now_in_voice:
+            joined = state.voice_joined_at.pop(uid, None)
+            if joined is None:
+                return
+
+            # Already claimed today — don't bother tracking
+            if state.voice_daily_claimed.get(uid) == today:
+                return
+
+            # Not registered — don't track
+            if uid not in state.user_data:
+                return
+
+            # Accumulate session time
+            session = time.time() - joined
+            accumulated = state.voice_accumulated.get(uid, 0.0) + session
+            state.voice_accumulated[uid] = accumulated
+
+            # Check if they hit 30 minutes
+            if accumulated >= VOICE_REQUIRED_SECONDS:
+                user = state.user_data[uid]
+                if user["gold"] < DAILY_STIPEND_CAP:
+                    grant = min(DAILY_STIPEND, DAILY_STIPEND_CAP - user["gold"])
+                    user["gold"] += grant
+                    state.voice_daily_claimed[uid] = today
+                    storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+                    print(f"[Stipend] {user['house']['name']} earned {grant} gold (voice activity)", flush=True)
+                else:
+                    state.voice_daily_claimed[uid] = today  # mark as done even if above cap
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
