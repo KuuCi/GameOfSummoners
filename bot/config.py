@@ -45,6 +45,11 @@ DAILY_STIPEND_CAP     = 100   # Only granted if below this amount (tops you up t
 # At 0.5: a 2:1 power lead gives ~58/42 odds instead of 67/33.
 JOUST_ODDS_COMPRESSION = 0.5
 
+# ── War Effort ─────────────────────────────
+WAR_EFFORT_MIN        = 10    # Minimum gold to pledge
+WAR_EFFORT_MAX        = 200   # Maximum gold to pledge
+WAR_EFFORT_WINDOW     = 120   # Seconds the buttons stay active after game detected
+
 # ── Riot API ────────────────────────────────
 # Supported regions → routing values
 ROUTING = {

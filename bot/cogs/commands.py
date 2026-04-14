@@ -266,28 +266,15 @@ class Commands(commands.Cog):
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("Not enough gold.", ephemeral=True); return
 
-        # ── One joust at a time ──────────────────────────────────────────
+        # Clean expired duels
         now = time.time()
-        # Clean expired duels first
         expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
         for cid in expired:
             del state.pending_duels[cid]
 
-        # Check if challenger already has a pending joust (as challenger)
+        # One outgoing challenge per person
         if uid in state.pending_duels:
-            await interaction.response.send_message("You already have a pending joust. Wait for it to be accepted or expire.", ephemeral=True); return
-
-        # Check if challenger is already a target in another joust
-        for cid, d in state.pending_duels.items():
-            if d["target_id"] == uid:
-                await interaction.response.send_message("You have a pending joust challenge to answer first. Use `/accept_joust` or wait for it to expire.", ephemeral=True); return
-
-        # Check if the target already has a pending joust (as challenger or target)
-        if ouid in state.pending_duels:
-            await interaction.response.send_message(f"{opponent.display_name} already has a pending joust.", ephemeral=True); return
-        for cid, d in state.pending_duels.items():
-            if d["target_id"] == ouid:
-                await interaction.response.send_message(f"{opponent.display_name} already has a pending joust.", ephemeral=True); return
+            await interaction.response.send_message("You already have a pending outgoing joust. Wait for it to be accepted, declined, or expire.", ephemeral=True); return
 
         state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": now + DUEL_EXPIRY}
         embed = discord.Embed(
@@ -296,7 +283,7 @@ class Commands(commands.Cog):
                 f"**{state.user_data[uid]['house']['name']}** challenges "
                 f"**{state.user_data[ouid]['house']['name']}** for a pool of **{wager*2:,} gold**!\n"
                 f"Each side puts in {wager:,} 🪙. Winner takes all.\n\n"
-                f"{opponent.mention} — use `/accept_joust` to accept, or ignore to let it expire in 1 hour."
+                f"{opponent.mention} — use `/accept_joust` to accept or `/decline_joust` to refuse."
             ),
             color=0xE74C3C,
         )
@@ -305,7 +292,8 @@ class Commands(commands.Cog):
     # ── /accept_joust ─────────────────────────────────────────────────────
 
     @app_commands.command(name="accept_joust", description="Accept a pending joust challenge.")
-    async def accept_joust(self, interaction: discord.Interaction):
+    @app_commands.describe(challenger="If you have multiple challengers, pick which to accept.")
+    async def accept_joust(self, interaction: discord.Interaction, challenger: discord.Member = None):
         uid = str(interaction.user.id)
 
         # Clean expired duels first
@@ -314,19 +302,50 @@ class Commands(commands.Cog):
         for cid in expired:
             del state.pending_duels[cid]
 
-        challenger_id = None
-        for cid, duel in state.pending_duels.items():
-            if duel["target_id"] == uid:
-                challenger_id = cid
-                break
-        if not challenger_id:
+        # Find all incoming challenges for this user
+        incoming = {cid: d for cid, d in state.pending_duels.items() if d["target_id"] == uid}
+
+        if not incoming:
             await interaction.response.send_message("No pending joust found for you.", ephemeral=True); return
+
+        # If multiple challengers and none specified, list them
+        if len(incoming) > 1 and challenger is None:
+            lines = []
+            for cid, d in incoming.items():
+                c_house = state.user_data.get(cid, {}).get("house", {})
+                lines.append(f"• {c_house.get('sigil','')} **{c_house.get('name','?')}** — {d['wager']:,} 🪙")
+            await interaction.response.send_message(
+                f"You have **{len(incoming)}** pending jousts. Use `/accept_joust challenger:@name` to pick one:\n" + "\n".join(lines),
+                ephemeral=True,
+            ); return
+
+        # Determine which challenger to accept
+        if challenger:
+            challenger_id = str(challenger.id)
+            if challenger_id not in incoming:
+                await interaction.response.send_message("No pending joust from that person.", ephemeral=True); return
+        else:
+            challenger_id = next(iter(incoming))
+
         if uid not in state.user_data or challenger_id not in state.user_data:
             await interaction.response.send_message("One combatant has no house.", ephemeral=True); return
-        duel  = state.pending_duels.pop(challenger_id)
+
+        duel  = state.pending_duels[challenger_id]
         wager = duel["wager"]
+
+        # Check gold BEFORE popping
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("You don't have enough gold to cover the wager.", ephemeral=True); return
+        if state.user_data[challenger_id]["gold"] < wager:
+            # Challenger can no longer afford it — cancel
+            del state.pending_duels[challenger_id]
+            await interaction.response.send_message("The challenger no longer has enough gold. Joust cancelled.", ephemeral=True); return
+
+        # Pop the accepted duel and cancel all other incoming jousts
+        del state.pending_duels[challenger_id]
+        cancelled = [cid for cid, d in state.pending_duels.items() if d["target_id"] == uid]
+        for cid in cancelled:
+            del state.pending_duels[cid]
 
         # Defer before the slow narration API call
         await interaction.response.defer()
@@ -355,7 +374,39 @@ class Commands(commands.Cog):
         embed.add_field(name="😔 Shame",    value=f'"{shame}" — 24h lockout or win a joust to clear', inline=False)
         if cleared_shame:
             embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
+        if cancelled:
+            embed.add_field(name="🚫 Cancelled", value=f"{len(cancelled)} other joust challenge(s) dismissed.", inline=False)
         await interaction.followup.send(embed=embed)
+
+    # ── /decline_joust ────────────────────────────────────────────────────
+
+    @app_commands.command(name="decline_joust", description="Decline a pending joust challenge.")
+    @app_commands.describe(challenger="The challenger to decline. Leave blank to decline all.")
+    async def decline_joust(self, interaction: discord.Interaction, challenger: discord.Member = None):
+        uid = str(interaction.user.id)
+
+        # Clean expired
+        now = time.time()
+        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
+        for cid in expired:
+            del state.pending_duels[cid]
+
+        incoming = {cid: d for cid, d in state.pending_duels.items() if d["target_id"] == uid}
+        if not incoming:
+            await interaction.response.send_message("No pending jousts to decline.", ephemeral=True); return
+
+        if challenger:
+            cid = str(challenger.id)
+            if cid not in incoming:
+                await interaction.response.send_message("No pending joust from that person.", ephemeral=True); return
+            c_house = state.user_data.get(cid, {}).get("house", {}).get("name", "Unknown")
+            del state.pending_duels[cid]
+            await interaction.response.send_message(f"*The challenge from **{c_house}** has been refused.*")
+        else:
+            count = len(incoming)
+            for cid in incoming:
+                del state.pending_duels[cid]
+            await interaction.response.send_message(f"*{count} joust challenge(s) refused.*")
 
     # ── /setannouncements ─────────────────────────────────────────────────
 

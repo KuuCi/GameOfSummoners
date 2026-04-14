@@ -18,9 +18,110 @@ from bot.presence     import is_in_lol_game
 from bot.config       import (
     MATCH_FETCH_DELAY, WEEKLY_RECAP_DAY, WEEKLY_RECAP_HOUR,
     DAILY_STIPEND, DAILY_STIPEND_CAP,
+    WAR_EFFORT_MIN, WAR_EFFORT_MAX, WAR_EFFORT_WINDOW,
 )
 
 VOICE_REQUIRED_SECONDS = 30 * 60  # 30 minutes in voice to earn stipend
+
+
+# ── War Effort Modal + Buttons ──────────────────────────────────────────
+
+class WarEffortModal(discord.ui.Modal):
+    """Pop-up that asks how much gold to stake."""
+
+    amount_input = discord.ui.TextInput(
+        label="Gold to stake",
+        placeholder=f"{WAR_EFFORT_MIN}–{WAR_EFFORT_MAX}",
+        min_length=1,
+        max_length=5,
+    )
+
+    def __init__(self, player_uid: str, side: str):
+        title = "Join the War Effort" if side == "support" else "Lodge a Protest"
+        super().__init__(title=title)
+        self.player_uid = player_uid
+        self.side = side
+
+    async def on_submit(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+
+        try:
+            amount = int(self.amount_input.value)
+        except ValueError:
+            await interaction.response.send_message("Enter a number.", ephemeral=True)
+            return
+
+        if not (WAR_EFFORT_MIN <= amount <= WAR_EFFORT_MAX):
+            await interaction.response.send_message(
+                f"Must be between {WAR_EFFORT_MIN} and {WAR_EFFORT_MAX} gold.", ephemeral=True
+            )
+            return
+
+        if state.user_data[uid]["gold"] < amount:
+            await interaction.response.send_message("Not enough gold.", ephemeral=True)
+            return
+
+        # Double-check they haven't pledged while the modal was open
+        war = state.active_wars.get(self.player_uid)
+        if not war:
+            await interaction.response.send_message("This war effort has ended.", ephemeral=True)
+            return
+        if uid in war["supporters"] or uid in war["protesters"]:
+            await interaction.response.send_message("You have already pledged.", ephemeral=True)
+            return
+
+        war[f"{self.side}s"][uid] = amount  # "supporters" or "protesters"
+        house = state.user_data[uid]["house"]
+        player_house = state.user_data[self.player_uid]["house"]
+        action = "rallies behind" if self.side == "support" else "protests"
+
+        sup_total = sum(war["supporters"].values())
+        pro_total = sum(war["protesters"].values())
+        await interaction.response.send_message(
+            f"{house['sigil']} **{house['name']}** {action} **{player_house['name']}**! "
+            f"({amount} 🪙 staked)\n"
+            f"⚔️ {sup_total} 🪙 supporting · 🏳️ {pro_total} 🪙 protesting"
+        )
+
+
+class WarEffortView(discord.ui.View):
+    """Buttons for supporting or protesting a lord's ranked game."""
+
+    def __init__(self, player_uid: str):
+        super().__init__(timeout=WAR_EFFORT_WINDOW)
+        self.player_uid = player_uid
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+
+    def _pre_check(self, uid: str) -> str | None:
+        if uid not in state.user_data:
+            return "You must `/register` first."
+        if uid == self.player_uid:
+            return "You cannot bet on your own game."
+        if state.user_data[uid]["gold"] < WAR_EFFORT_MIN:
+            return f"You need at least {WAR_EFFORT_MIN} gold."
+        war = state.active_wars.get(self.player_uid, {})
+        if uid in war.get("supporters", {}) or uid in war.get("protesters", {}):
+            return "You have already pledged."
+        return None
+
+    @discord.ui.button(label="⚔️ Join War Effort", style=discord.ButtonStyle.green)
+    async def support(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._pre_check(str(interaction.user.id))
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
+        await interaction.response.send_modal(WarEffortModal(self.player_uid, "supporter"))
+
+    @discord.ui.button(label="🏳️ Protest", style=discord.ButtonStyle.red)
+    async def protest(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._pre_check(str(interaction.user.id))
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
+            return
+        await interaction.response.send_modal(WarEffortModal(self.player_uid, "protester"))
 
 
 class Events(commands.Cog):
@@ -45,9 +146,38 @@ class Events(commands.Cog):
 
         if not was_in_game and now_in_game:
             state.active_games[uid] = time.time()
+            # Post war effort call to arms
+            await self._post_war_effort(after, uid)
         elif was_in_game and not now_in_game:
             del state.active_games[uid]
             self.bot.loop.create_task(self._fetch_match_after_delay(after))
+
+    # ── War Effort broadcast ───────────────────────────────────────────
+
+    async def _post_war_effort(self, member: discord.Member, uid: str):
+        user  = state.user_data[uid]
+        house = user["house"]
+        state.active_wars[uid] = {"supporters": {}, "protesters": {}}
+
+        embed = discord.Embed(
+            title=f"📯  {house['sigil']} {house['name']} rides to war!",
+            description=(
+                f"**{member.display_name}** has entered a ranked game.\n\n"
+                f"⚔️ **Join War Effort** — stake gold that they will conquer\n"
+                f"🏳️ **Protest** — stake gold that they will fall\n\n"
+                f"Pledge {WAR_EFFORT_MIN}–{WAR_EFFORT_MAX} 🪙 · *{WAR_EFFORT_WINDOW // 60} minutes to decide.*"
+            ),
+            color=house["color"],
+        )
+        embed.set_author(name=str(member), icon_url=member.display_avatar.url)
+
+        view = WarEffortView(uid)
+        for guild in self.bot.guilds:
+            ch_id = state.announcement_channels.get(str(guild.id))
+            if ch_id:
+                ch = guild.get_channel(ch_id)
+                if ch:
+                    await ch.send(embed=embed, view=view)
 
     # ── Match result pipeline ────────────────────────────────────────────
 
@@ -119,6 +249,34 @@ class Events(commands.Cog):
                         f"-{w_result['amount']} 🪙"
                     )
 
+        # ── War Effort resolution ───────────────────────────────────────────
+        war_lines = []
+        war = state.active_wars.pop(uid, None)
+        if war:
+            won = match_delta["won"]
+            # Supporters win if player won, protesters win if player lost
+            for sid, amount in war.get("supporters", {}).items():
+                s = state.user_data.get(sid)
+                if not s:
+                    continue
+                if won:
+                    s["gold"] += amount
+                    war_lines.append(f"⚔️ {s['house']['sigil']} **{s['house']['name']}**  +{amount} 🪙 ✅")
+                else:
+                    s["gold"] = max(0, s["gold"] - amount)
+                    war_lines.append(f"⚔️ {s['house']['sigil']} **{s['house']['name']}**  -{amount} 🪙 ❌")
+
+            for pid, amount in war.get("protesters", {}).items():
+                p = state.user_data.get(pid)
+                if not p:
+                    continue
+                if not won:
+                    p["gold"] += amount
+                    war_lines.append(f"🏳️ {p['house']['sigil']} **{p['house']['name']}**  +{amount} 🪙 ✅")
+                else:
+                    p["gold"] = max(0, p["gold"] - amount)
+                    war_lines.append(f"🏳️ {p['house']['sigil']} **{p['house']['name']}**  -{amount} 🪙 ❌")
+
         # ── Persist ───────────────────────────────────────────────────────
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
 
@@ -136,6 +294,8 @@ class Events(commands.Cog):
         embed = helpers.result_embed(member, user, participant, match_delta, rank_change, narr)
         if backer_lines:
             embed.add_field(name="🛡️ Allied Houses", value="\n".join(backer_lines), inline=False)
+        if war_lines:
+            embed.add_field(name="📯 War Effort", value="\n".join(war_lines), inline=False)
         await self._broadcast(embed)
 
         # Rank change narration + shame bell

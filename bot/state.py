@@ -45,3 +45,10 @@ voice_accumulated: Dict[str, float] = {}
 
 # discord_id → "YYYY-MM-DD" of last stipend claim
 voice_daily_claimed: Dict[str, str] = {}
+
+# ── War Effort tracking ──
+# player_uid → {
+#   "supporters":  { uid: amount },   # backed to win
+#   "protesters":  { uid: amount },   # backed to lose
+# }
+active_wars: Dict[str, Dict[str, Any]] = {}
