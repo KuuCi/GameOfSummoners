@@ -90,10 +90,38 @@ class WarEffortView(discord.ui.View):
     def __init__(self, player_uid: str):
         super().__init__(timeout=WAR_EFFORT_WINDOW)
         self.player_uid = player_uid
+        self.messages: list[discord.Message] = []
 
     async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
+        """Timer expired — remove buttons, show betting closed."""
+        war = state.active_wars.get(self.player_uid, {})
+        sup_count = len(war.get("supporters", {}))
+        pro_count = len(war.get("protesters", {}))
+        sup_gold = sum(war.get("supporters", {}).values())
+        pro_gold = sum(war.get("protesters", {}).values())
+
+        closed_text = "📯 **Betting is closed.** The kingdom awaits the outcome.\n"
+        if sup_count or pro_count:
+            closed_text += f"⚔️ {sup_count} supporter(s) ({sup_gold} 🪙) · 🏳️ {pro_count} protester(s) ({pro_gold} 🪙)"
+        else:
+            closed_text += "*No one dared to wager.*"
+
+        closed_embed = discord.Embed(description=closed_text, color=0x7F8C8D)
+
+        for msg in self.messages:
+            try:
+                await msg.edit(embed=closed_embed, view=None)
+            except Exception:
+                pass
+
+    async def _delete_messages(self):
+        """Game ended — remove the betting messages entirely."""
+        self.stop()
+        for msg in self.messages:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
     def _pre_check(self, uid: str) -> str | None:
         if uid not in state.user_data:
@@ -240,11 +268,14 @@ class Events(commands.Cog):
             if not ch:
                 print(f"[WarEffort] Channel {ch_id} not found in {guild.name} — was it deleted?", flush=True)
                 continue
-            await ch.send(embed=embed, view=view)
+            msg = await ch.send(embed=embed, view=view)
+            view.messages.append(msg)
             posted = True
             print(f"[WarEffort] Posted to #{ch.name} in {guild.name}", flush=True)
         if not posted:
             print(f"[WarEffort] WARNING: Could not post anywhere — no valid announcements channel", flush=True)
+        # Store view reference so we can disable buttons when game ends
+        state.active_wars[uid]["view"] = view
 
     # ── Match result pipeline ────────────────────────────────────────────
 
@@ -327,10 +358,19 @@ class Events(commands.Cog):
         war_lines = []
         war = state.active_wars.pop(uid, None)
         if war:
+            # Delete the original betting message
+            war_view = war.get("view")
+            if war_view:
+                try:
+                    await war_view._delete_messages()
+                except Exception:
+                    pass
+
             sup_count = len(war.get("supporters", {}))
             pro_count = len(war.get("protesters", {}))
             print(f"[WarEffort] Resolving — {sup_count} supporter(s), {pro_count} protester(s)", flush=True)
             won = match_delta["won"]
+
             # Supporters win if player won, protesters win if player lost
             for sid, amount in war.get("supporters", {}).items():
                 s = state.user_data.get(sid)
@@ -353,6 +393,13 @@ class Events(commands.Cog):
                 else:
                     p["gold"] = max(0, p["gold"] - amount)
                     war_lines.append(f"🏳️ {p['house']['sigil']} **{p['house']['name']}**  -{amount} 🪙 ❌")
+
+            # Add totals
+            if sup_count or pro_count:
+                sup_gold = sum(war.get("supporters", {}).values())
+                pro_gold = sum(war.get("protesters", {}).values())
+                result_word = "**Victory** — supporters rejoice!" if won else "**Defeat** — protesters cash in!"
+                war_lines.append(f"\n{result_word}\n⚔️ {sup_gold} 🪙 supported · 🏳️ {pro_gold} 🪙 protested")
 
         # ── Persist ───────────────────────────────────────────────────────
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
