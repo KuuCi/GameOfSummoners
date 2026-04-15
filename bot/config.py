@@ -34,7 +34,7 @@ BACKER_WAGER_MAX      = 300
 # Power = gold + (territory * TERRITORY_GOLD_VALUE)
 TERRITORY_PER_WIN     = 1
 TERRITORY_LOST_PER_LOSS = 0   # Territory is never lost — only won or declared via war
-TERRITORY_GOLD_VALUE  = 10    # Each territory tile is worth this much in power calculations
+TERRITORY_GOLD_VALUE  = 50    # Each territory tile is worth this much in power calculations
 
 # ── Daily Stipend ──────────────────────────
 DAILY_STIPEND         = 100   # Gold granted for 30 min in voice
