@@ -176,8 +176,8 @@ class Events(commands.Cog):
             house = state.user_data[uid]["house"]["name"]
             print(f"[Presence] {house} ({after}) entered a game", flush=True)
             state.active_games[uid] = time.time()
+            self.bot.loop.create_task(self._post_war_effort(after, uid))  # was: await
             # Post war effort call to arms
-            await self._post_war_effort(after, uid)
         elif was_in_game and not now_in_game:
             house = state.user_data[uid]["house"]["name"]
             print(f"[Presence] {house} ({after}) left game — fetching match in {MATCH_FETCH_DELAY}s", flush=True)

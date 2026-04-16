@@ -57,9 +57,12 @@ def house_embed(user: dict, discord_user: discord.User | discord.Member) -> disc
     embed.add_field(name="Jousts",    value=f"🏇 {jw}W  {jl}L",                 inline=True)
     if user.get("shame"):
         import time
-        remaining = max(0, int((user["shame"]["expires_at"] - time.time()) / 3600))
-        embed.add_field(name="😔 Shame", value=f'"{user["shame"]["title"]}" — clears in ~{remaining}h or win a joust', inline=False)
-    if user["titles"]:
+        remaining = int((user["shame"]["expires_at"] - time.time()) / 3600)
+        if remaining > 0:
+            embed.add_field(name="😔 Shame", value=f'"{user["shame"]["title"]}" — clears in ~{remaining}h or win a joust', inline=False)
+        else:
+            user["shame"] = None
+        if user["titles"]:
         embed.add_field(name="Titles", value="\n".join(user["titles"]), inline=False)
     embed.set_footer(text=f"Riot ID: {user['riot_id']}  ·  Region: {user['region'].upper()}")
     return embed

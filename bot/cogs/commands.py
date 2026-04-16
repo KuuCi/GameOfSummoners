@@ -401,6 +401,99 @@ class Commands(commands.Cog):
             embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
         await interaction.response.send_message(embed=embed)
 
+    # ── /steal ────────────────────────────────────────────────────────────
+
+    @app_commands.command(name="steal", description="Attempt to steal gold from a powerful lord.")
+    @app_commands.describe(target="One of the top 3 lords to steal from.")
+    async def steal(self, interaction: discord.Interaction, target: discord.Member):
+        uid  = str(interaction.user.id)
+        tuid = str(target.id)
+
+        if uid not in state.user_data:
+            await interaction.response.send_message("Register first.", ephemeral=True); return
+        if tuid not in state.user_data:
+            await interaction.response.send_message(f"{target.display_name} has no house.", ephemeral=True); return
+        if uid == tuid:
+            await interaction.response.send_message("You cannot steal from yourself.", ephemeral=True); return
+
+        thief  = state.user_data[uid]
+        victim = state.user_data[tuid]
+
+        # Can't steal while shamed
+        if kingdom.is_shamed(thief):
+            await interaction.response.send_message(
+                "You are marked with shame. No lord will let you near their vaults.", ephemeral=True
+            ); return
+
+        # Must have 0 territory
+        if thief.get("territory", 0) > 0:
+            await interaction.response.send_message(
+                "Only the truly destitute may attempt theft. You hold territory — you have too much to lose.",
+                ephemeral=True
+            ); return
+
+        # Must be in bottom 10% of power
+        all_powers = sorted([kingdom.compute_power(u) for u in state.user_data.values()])
+        cutoff     = all_powers[max(0, int(len(all_powers) * 0.10) - 1)]
+        if kingdom.compute_power(thief) > cutoff:
+            await interaction.response.send_message(
+                "You are not desperate enough to steal. Fall further before stooping this low.",
+                ephemeral=True
+            ); return
+
+        # Target must be in top 3
+        sorted_lords = sorted(state.user_data.items(), key=lambda x: kingdom.compute_power(x[1]), reverse=True)
+        top3_ids = [u for u, _ in sorted_lords[:3]]
+        if tuid not in top3_ids:
+            await interaction.response.send_message(
+                "You can only steal from the top 3 lords.", ephemeral=True
+            ); return
+
+        amount = min(50, victim["gold"])
+        await interaction.response.defer()
+
+        if random.random() < 0.30:
+            # Success — silent
+            victim["gold"]  = max(0, victim["gold"] - amount)
+            thief["gold"]  += amount
+            storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+            print(f"[Steal] {thief['house']['name']} stole {amount} gold from {victim['house']['name']}")
+
+            try:
+                victim_member = interaction.guild.get_member(int(tuid))
+                if victim_member:
+                    await victim_member.send(
+                        f"💰 It appears **{amount} gold** is missing from your coffers, "
+                        f"{victim['house']['sigil']} **{victim['house']['name']}**... "
+                        f"The treasury books don't add up. Someone has been in the vaults."
+                    )
+            except Exception:
+                pass
+
+            await interaction.followup.send(
+                f"{thief['house']['sigil']} **{thief['house']['name']}** slipped away with **{amount} 🪙**. No one saw a thing.",
+                ephemeral=True
+            )
+        else:
+            # Failure — public shame
+            shame = kingdom.award_shame_title(thief)
+            storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+            print(f"[Steal] {thief['house']['name']} failed to steal from {victim['house']['name']}")
+
+            fail_narr = await narration.narrate_steal_failure(thief["house"]["name"], victim["house"]["name"])
+
+            embed = discord.Embed(
+                title="🚨  Caught in the Act!",
+                description=fail_narr,
+                color=0xE74C3C,
+            )
+            embed.add_field(
+                name="😔 Shame Bestowed",
+                value=f'"{shame}" — {thief["house"]["sigil"]} {thief["house"]["name"]} will not live this down.',
+                inline=False,
+            )
+            await interaction.followup.send(f"<@{tuid}>", embed=embed)
+    
     # ── /setannouncements ─────────────────────────────────────────────────
 
     @app_commands.command(name="setannouncements", description="[Admin] Set the kingdom announcements channel.")

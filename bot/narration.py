@@ -110,6 +110,15 @@ async def weekly_recap(events: list[str], server_name: str) -> str:
     )
     return await _ask(SYSTEM_HERALD, prompt, max_tokens=300)
 
+async def narrate_steal_failure(thief_house: str, victim_house: str) -> str:
+    prompt = (
+        f"House '{thief_house}' tried to steal gold from House '{victim_house}' and got caught. "
+        f"Write a funny 2-3 sentence epic about how they failed — slipped on cobblestones, "
+        f"sneezed at the wrong moment, tripped over their cloak, got spotted by a guard dog, etc. "
+        f"Medieval voice, friend group energy. Make it embarrassing."
+    )
+    return await _ask(SYSTEM_HERALD, prompt, max_tokens=180)
+
 async def narrate_duel_result(winner_house: str, loser_house: str, wager: int) -> str:
     prompt = (
         f"House '{winner_house}' just beat House '{loser_house}' in a duel and took {wager} gold. "
