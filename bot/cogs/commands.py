@@ -4,6 +4,7 @@
 
 import time
 import random
+import asyncio
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -17,7 +18,6 @@ import bot.riot_api  as riot
 from bot.config import (
     DUEL_WAGER_MIN, DUEL_WAGER_MAX, DUEL_EXPIRY, DEFAULT_REGION,
     BACKER_WAGER_MIN, BACKER_WAGER_MAX, BACKER_WIN_SHARE, BACKER_LOSS_SHARE,
-    JOUST_ODDS_COMPRESSION,
 )
 
 
@@ -36,51 +36,53 @@ class Commands(commands.Cog):
     async def register(self, interaction: discord.Interaction, game_name: str, tag_line: str, region: str = DEFAULT_REGION):
         await interaction.response.defer(thinking=True)
         uid = str(interaction.user.id)
-        print(f"[Register] {interaction.user} → {game_name}#{tag_line} {region}", flush=True)
+        print(f"[Register] {interaction.user} → {game_name}#{tag_line} {region}")
 
-        try:
-            account = await riot.get_account_by_riot_id(game_name, tag_line, region)
-            if not account:
-                print(f"[Register] Failed: account not found", flush=True)
-                await interaction.followup.send("Could not find that Riot ID. Check the name, tag, and region.")
-                return
+        account = await riot.get_account_by_riot_id(game_name, tag_line, region)
+        if not account:
+            print(f"[Register] Failed: account not found")
+            await interaction.followup.send("Could not find that Riot ID. Check the name, tag, and region.")
+            return
 
-            puuid = account["puuid"]
-            print(f"[Register] Got puuid: {puuid[:8]}...", flush=True)
+        puuid = account["puuid"]
+        print(f"[Register] Got puuid: {puuid[:8]}...")
 
-            rank_raw = await riot.get_rank(puuid, region)
-            print(f"[Register] Rank fetched: {rank_raw.get('tier') if rank_raw else 'Unranked'}", flush=True)
+        summoner = await riot.get_summoner_by_puuid(puuid, region)
+        if not summoner:
+            print(f"[Register] Failed: summoner not found")
+            await interaction.followup.send("Could not fetch summoner data.")
+            return
 
-            print(f"[Register] Fetching champion mastery...", flush=True)
-            await riot._ensure_champion_map()
-            mastery = await riot.get_top_mastery(puuid, region, count=3)
-            champ_pool = []
-            for m in mastery:
-                name = riot.champion_name_by_id(m.get("championId", 0))
-                if name and name not in champ_pool:
-                    champ_pool.append(name)
-            print(f"[Register] Champ pool (mastery): {champ_pool}", flush=True)
+        summoner_id = summoner["id"]
+        print(f"[Register] Got summoner id")
 
-            house   = kingdom.generate_house(champ_pool)
-            riot_id = f"{game_name}#{tag_line}"
-            entry   = kingdom.new_user_entry(riot_id, puuid, region.lower(), house, rank_raw)
+        rank_raw = await riot.get_rank(summoner_id, region)
+        print(f"[Register] Rank: {rank_raw.get('tier') if rank_raw else 'Unranked'}")
 
-            state.user_data[uid] = entry
-            storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-            print(f"[Register] Done — {house['name']} created for {interaction.user}", flush=True)
+        print(f"[Register] Fetching match history...")
+        match_ids = await riot.get_recent_match_ids(puuid, region, count=5)
+        print(f"[Register] Got {len(match_ids)} match ids")
 
-            embed = helpers.house_embed(entry, interaction.user)
-            embed.set_footer(text=f"Welcome to the kingdom, {house['name']}. May your lanes never feed.")
-            await interaction.followup.send(embed=embed)
+        champ_pool = []
+        for mid in match_ids[:3]:
+            m = await riot.get_match(mid, region)
+            if m:
+                p = riot.extract_participant(m, puuid)
+                if p:
+                    champ_pool.append(p.get("championName", ""))
+        print(f"[Register] Champ pool: {champ_pool}")
 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            print(f"[Register] ERROR: {e}", flush=True)
-            try:
-                await interaction.followup.send(f"Something went wrong during registration: `{e}`")
-            except Exception:
-                pass
+        house   = kingdom.generate_house(champ_pool)
+        riot_id = f"{game_name}#{tag_line}"
+        entry   = kingdom.new_user_entry(riot_id, puuid, summoner_id, region.lower(), house, rank_raw)
+
+        state.user_data[uid] = entry
+        storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+        print(f"[Register] Done — {house['name']} created for {interaction.user}")
+
+        embed = helpers.house_embed(entry, interaction.user)
+        embed.set_footer(text=f"Welcome to the kingdom, {house['name']}. May your lanes never feed.")
+        await interaction.followup.send(embed=embed)
 
     # ── /unregister ──────────────────────────────────────────────────────
 
@@ -153,31 +155,87 @@ class Commands(commands.Cog):
             return
         await interaction.response.defer(thinking=True)
         user  = state.user_data[uid]
-
-        # Fetch champion-specific recent stats
-        champ_stats = await riot.get_champion_recent_stats(user["puuid"], user["region"], champion)
-
-        text  = await narration.oracle_prediction(
-            user["house"]["name"], champion,
-            user["stats"]["wins"], user["stats"]["losses"],
-            champ_stats,
-        )
+        text  = await narration.oracle_prediction(user["house"]["name"], champion, user["stats"]["wins"], user["stats"]["losses"])
         embed = discord.Embed(title="🔮  The Oracle Speaks", description=f"*{text}*", color=0x8E44AD)
-
-        # Add stats footer if we found games
-        if champ_stats.get("found", 0) > 0:
-            streak_icon = "🔥" if champ_stats["streak_type"] == "win" else "💀"
-            embed.add_field(
-                name=f"📊 {champion} — Last {champ_stats['found']} ranked",
-                value=(
-                    f"{champ_stats['wins']}W {champ_stats['losses']}L · "
-                    f"Avg {champ_stats['avg_kda']} · {champ_stats['avg_cs']} CS · "
-                    f"{streak_icon} {champ_stats['streak']}{champ_stats['streak_type'][0].upper()} streak"
-                ),
-                inline=False,
-            )
-
         embed.set_footer(text="The Oracle's prophecies are binding. Go forth.")
+        await interaction.followup.send(embed=embed)
+
+    # ── /livegame ─────────────────────────────────────────────────────────
+
+    @app_commands.command(name="livegame", description="Show the current game for a registered lord.")
+    @app_commands.describe(member="The lord to check. Leave blank for yourself.")
+    async def livegame(self, interaction: discord.Interaction, member: discord.Member = None):
+        target = member or interaction.user
+        uid    = str(target.id)
+
+        if uid not in state.user_data:
+            await interaction.response.send_message(f"{target.display_name} is not registered.", ephemeral=True)
+            return
+
+        user = state.user_data[uid]
+        if not user.get("summoner_id"):
+            await interaction.response.send_message("No summoner data for this lord.", ephemeral=True)
+            return
+
+        await interaction.response.defer(thinking=True)
+        print(f"[LiveGame] Fetching game for {user['riot_id']}")
+
+        game = await riot.get_live_game(user["summoner_id"], user["region"])
+        if not game:
+            await interaction.followup.send(f"**{user['house']['name']}** is not currently in a game.")
+            return
+
+        participants = game.get("participants", [])
+
+        # Analyze all participants in parallel
+        async def analyze(p):
+            puuid    = p.get("puuid", "")
+            champ_id = p.get("championId", 0)
+            if not puuid:
+                return p, {}, p.get("summonerName", "Unknown")
+            stats, account = await asyncio.gather(
+                riot.analyze_participant(puuid, champ_id, user["region"]),
+                riot.get_account_by_puuid(puuid, user["region"]),
+            )
+            name = f"{account['gameName']}#{account['tagLine']}" if account else p.get("summonerName", "Unknown")
+            return p, stats, name
+
+        print(f"[LiveGame] Analyzing {len(participants)} participants...")
+        results = await asyncio.gather(*[analyze(p) for p in participants])
+        print(f"[LiveGame] Analysis done")
+
+        def format_team(team_results) -> str:
+            lines = []
+            for p, stats, name in team_results:
+                champ     = riot.champion_name(p.get("championId", 0))
+                is_target = p.get("puuid") == user.get("puuid")
+                name_disp = f"*{name}*" if is_target else name
+
+                tags = []
+                if stats.get("smurf_flag"):
+                    tags.append("🚨 smurf?")
+                if stats.get("first_timer"):
+                    tags.append("🆕 first time")
+                streak = stats.get("streak")
+                if streak:
+                    icon = "🔥" if streak.startswith("W") else "💀"
+                    tags.append(f"{icon} {streak}")
+
+                tag_str = f"  {' · '.join(tags)}" if tags else ""
+                lines.append(f"{champ} ({name_disp}){tag_str}")
+            return "\n".join(lines)
+
+        blue_results = [(p, s, n) for (p, s, n) in results if p.get("teamId") == 100]
+        red_results  = [(p, s, n) for (p, s, n) in results if p.get("teamId") == 200]
+
+        house = user["house"]
+        embed = discord.Embed(
+            title=f"⚔️  {house['name']} is in a game",
+            color=house["color"],
+        )
+        embed.add_field(name="🔵 Blue Team", value=f"```\n{format_team(blue_results)}\n```", inline=False)
+        embed.add_field(name="🔴 Red Team",  value=f"```\n{format_team(red_results)}\n```",  inline=False)
+        embed.set_footer(text="🚨 smurf? · 🆕 first time on champ · 🔥💀 win/loss streak (3+)")
         await interaction.followup.send(embed=embed)
 
     # ── /back ─────────────────────────────────────────────────────────────
@@ -287,25 +345,14 @@ class Commands(commands.Cog):
             await interaction.response.send_message(f"Wager must be between {DUEL_WAGER_MIN} and {DUEL_WAGER_MAX} gold.", ephemeral=True); return
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("Not enough gold.", ephemeral=True); return
-
-        # Clean expired duels
-        now = time.time()
-        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
-        for cid in expired:
-            del state.pending_duels[cid]
-
-        # One outgoing challenge per person
-        if uid in state.pending_duels:
-            await interaction.response.send_message("You already have a pending outgoing joust. Wait for it to be accepted, declined, or expire.", ephemeral=True); return
-
-        state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": now + DUEL_EXPIRY}
+        state.pending_duels[uid] = {"target_id": ouid, "wager": wager, "expires_at": time.time() + DUEL_EXPIRY}
         embed = discord.Embed(
             title="🏇  A Joust Has Been Called!",
             description=(
                 f"**{state.user_data[uid]['house']['name']}** challenges "
                 f"**{state.user_data[ouid]['house']['name']}** for a pool of **{wager*2:,} gold**!\n"
                 f"Each side puts in {wager:,} 🪙. Winner takes all.\n\n"
-                f"{opponent.mention} — use `/accept_joust` to accept or `/decline_joust` to refuse."
+                f"{opponent.mention} — use `/accept_joust` to accept, or ignore to let it expire in 1 hour."
             ),
             color=0xE74C3C,
         )
@@ -314,69 +361,25 @@ class Commands(commands.Cog):
     # ── /accept_joust ─────────────────────────────────────────────────────
 
     @app_commands.command(name="accept_joust", description="Accept a pending joust challenge.")
-    @app_commands.describe(challenger="If you have multiple challengers, pick which to accept.")
-    async def accept_joust(self, interaction: discord.Interaction, challenger: discord.Member = None):
+    async def accept_joust(self, interaction: discord.Interaction):
         uid = str(interaction.user.id)
-
-        # Clean expired duels first
-        now = time.time()
-        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
-        for cid in expired:
-            del state.pending_duels[cid]
-
-        # Find all incoming challenges for this user
-        incoming = {cid: d for cid, d in state.pending_duels.items() if d["target_id"] == uid}
-
-        if not incoming:
+        challenger_id = None
+        for cid, duel in state.pending_duels.items():
+            if duel["target_id"] == uid and duel["expires_at"] > time.time():
+                challenger_id = cid
+                break
+        if not challenger_id:
             await interaction.response.send_message("No pending joust found for you.", ephemeral=True); return
-
-        # If multiple challengers and none specified, list them
-        if len(incoming) > 1 and challenger is None:
-            lines = []
-            for cid, d in incoming.items():
-                c_house = state.user_data.get(cid, {}).get("house", {})
-                lines.append(f"• {c_house.get('sigil','')} **{c_house.get('name','?')}** — {d['wager']:,} 🪙")
-            await interaction.response.send_message(
-                f"You have **{len(incoming)}** pending jousts. Use `/accept_joust challenger:@name` to pick one:\n" + "\n".join(lines),
-                ephemeral=True,
-            ); return
-
-        # Determine which challenger to accept
-        if challenger:
-            challenger_id = str(challenger.id)
-            if challenger_id not in incoming:
-                await interaction.response.send_message("No pending joust from that person.", ephemeral=True); return
-        else:
-            challenger_id = next(iter(incoming))
-
         if uid not in state.user_data or challenger_id not in state.user_data:
             await interaction.response.send_message("One combatant has no house.", ephemeral=True); return
-
-        duel  = state.pending_duels[challenger_id]
+        duel  = state.pending_duels.pop(challenger_id)
         wager = duel["wager"]
-
-        # Check gold BEFORE popping
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("You don't have enough gold to cover the wager.", ephemeral=True); return
-        if state.user_data[challenger_id]["gold"] < wager:
-            # Challenger can no longer afford it — cancel
-            del state.pending_duels[challenger_id]
-            await interaction.response.send_message("The challenger no longer has enough gold. Joust cancelled.", ephemeral=True); return
-
-        # Pop the accepted duel and cancel all other incoming jousts
-        del state.pending_duels[challenger_id]
-        cancelled = [cid for cid, d in state.pending_duels.items() if d["target_id"] == uid]
-        for cid in cancelled:
-            del state.pending_duels[cid]
-
-        # Defer before the slow narration API call
-        await interaction.response.defer()
-
         c_power = kingdom.compute_power(state.user_data[challenger_id])
         d_power = kingdom.compute_power(state.user_data[uid])
         total   = c_power + d_power
-        raw     = c_power / total if total > 0 else 0.5
-        c_prob  = 0.5 + (raw - 0.5) * JOUST_ODDS_COMPRESSION  # compress toward 50/50
+        c_prob  = c_power / total if total > 0 else 0.5
         challenger_wins = random.random() < c_prob
         winner_id, loser_id = (challenger_id, uid) if challenger_wins else (uid, challenger_id)
         winner = state.user_data[winner_id]
@@ -396,43 +399,12 @@ class Commands(commands.Cog):
         embed.add_field(name="😔 Shame",    value=f'"{shame}" — 24h lockout or win a joust to clear', inline=False)
         if cleared_shame:
             embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
-        if cancelled:
-            embed.add_field(name="🚫 Cancelled", value=f"{len(cancelled)} other joust challenge(s) dismissed.", inline=False)
-        await interaction.followup.send(embed=embed)
-
-    # ── /decline_joust ────────────────────────────────────────────────────
-
-    @app_commands.command(name="decline_joust", description="Decline a pending joust challenge.")
-    @app_commands.describe(challenger="The challenger to decline. Leave blank to decline all.")
-    async def decline_joust(self, interaction: discord.Interaction, challenger: discord.Member = None):
-        uid = str(interaction.user.id)
-
-        # Clean expired
-        now = time.time()
-        expired = [cid for cid, d in state.pending_duels.items() if d["expires_at"] <= now]
-        for cid in expired:
-            del state.pending_duels[cid]
-
-        incoming = {cid: d for cid, d in state.pending_duels.items() if d["target_id"] == uid}
-        if not incoming:
-            await interaction.response.send_message("No pending jousts to decline.", ephemeral=True); return
-
-        if challenger:
-            cid = str(challenger.id)
-            if cid not in incoming:
-                await interaction.response.send_message("No pending joust from that person.", ephemeral=True); return
-            c_house = state.user_data.get(cid, {}).get("house", {}).get("name", "Unknown")
-            del state.pending_duels[cid]
-            await interaction.response.send_message(f"*The challenge from **{c_house}** has been refused.*")
-        else:
-            count = len(incoming)
-            for cid in incoming:
-                del state.pending_duels[cid]
-            await interaction.response.send_message(f"*{count} joust challenge(s) refused.*")
+        await interaction.response.send_message(embed=embed)
 
     # ── /setannouncements ─────────────────────────────────────────────────
 
     @app_commands.command(name="setannouncements", description="[Admin] Set the kingdom announcements channel.")
+    @app_commands.checks.has_permissions(administrator=True)
     async def setannouncements(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.announcement_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -441,6 +413,7 @@ class Commands(commands.Cog):
     # ── /setshame ────────────────────────────────────────────────────────
 
     @app_commands.command(name="setshame", description="[Admin] Set the Wall of Shame channel.")
+    @app_commands.checks.has_permissions(administrator=True)
     async def setshame(self, interaction: discord.Interaction, channel: discord.TextChannel):
         state.shame_channels[str(interaction.guild_id)] = channel.id
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -449,6 +422,7 @@ class Commands(commands.Cog):
     # ── /setgold ─────────────────────────────────────────────────────────
 
     @app_commands.command(name="setgold", description="[Admin] Set a lord's gold balance.")
+    @app_commands.checks.has_permissions(administrator=True)
     async def setgold(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         uid = str(member.id)
         if uid not in state.user_data:
@@ -460,46 +434,11 @@ class Commands(commands.Cog):
     # ── /debugpresence ───────────────────────────────────────────────────
 
     @app_commands.command(name="debugpresence", description="[Admin] Debug Discord activity for a member.")
+    @app_commands.checks.has_permissions(administrator=True)
     async def debugpresence(self, interaction: discord.Interaction, member: discord.Member = None):
-        # Use guild cache for full presence data — interaction.user often lacks activities
-        if member:
-            target = interaction.guild.get_member(member.id) or member
-        else:
-            target = interaction.guild.get_member(interaction.user.id) or interaction.user
-        lines = []
-        for a in target.activities:
-            lines.append(
-                f"`{type(a).__name__}` name={a.name!r} "
-                f"type={a.type!r} state={getattr(a,'state',None)!r} "
-                f"details={getattr(a,'details',None)!r}"
-            )
-        status = f"Status: `{target.status}`\n" if hasattr(target, 'status') else ""
-        await interaction.response.send_message(
-            f"**{target}**\n{status}" + ("\n".join(lines) or "*No activities detected. Check: Discord Settings → Activity Privacy → 'Display current activity as a status message' must be ON.*"),
-            ephemeral=True,
-        )
-
-    # ── /cleardata ────────────────────────────────────────────────────────
-
-    @app_commands.command(name="cleardata", description="[Admin] Wipe all kingdom data. This cannot be undone.")
-    async def cleardata(self, interaction: discord.Interaction, confirm: str = ""):
-        if confirm.lower() != "yes":
-            await interaction.response.send_message(
-                "This will **permanently delete** all houses, gold, territory, and records.\n"
-                "Run `/cleardata confirm:yes` to confirm.",
-                ephemeral=True,
-            )
-            return
-        count = len(state.user_data)
-        state.user_data.clear()
-        state.pending_duels.clear()
-        state.active_games.clear()
-        storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
-        print(f"[Admin] {interaction.user} cleared all data ({count} houses)", flush=True)
-        await interaction.response.send_message(
-            f"*The chronicles have been burned. {count} house(s) erased from history.*",
-            ephemeral=True,
-        )
+        target = member or interaction.user
+        lines  = [f"`{type(a).__name__}` name={a.name!r} state={getattr(a,'state',None)!r}" for a in target.activities]
+        await interaction.response.send_message(f"**{target}**\n" + ("\n".join(lines) or "*No activities.*"), ephemeral=True)
 
     # ── /rules ───────────────────────────────────────────────────────────
 

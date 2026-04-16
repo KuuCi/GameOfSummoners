@@ -7,8 +7,9 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-import bot.state   as state
-import bot.storage as storage
+import bot.state    as state
+import bot.storage  as storage
+import bot.riot_api as riot
 
 load_dotenv()
 
@@ -32,11 +33,12 @@ async def create_bot():
             state.announcement_channels,
             state.shame_channels,
         )
+        await riot.load_champion_map()
+
         for cog in COGS:
             await bot.load_extension(cog)
+
         synced = await bot.tree.sync()
-        for guild in bot.guilds:
-            await bot.tree.sync(guild=guild)
         print(f"[Court] Logged in as {bot.user} | {len(synced)} commands synced")
         print(f"[Court] {len(state.user_data)} houses loaded from storage")
 
