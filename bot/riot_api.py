@@ -108,7 +108,7 @@ async def get_match(match_id: str, region: str) -> Optional[dict]:
         print(f"[Riot] Match error: {e}"); return None
 
 async def get_live_game(puuid: str, region: str) -> Optional[dict]:
-    url = f"https://{region}.api.riotgames.com/lol/spectator/v5/active-games/by-puuid/{puuid}"
+    url = f"https://{region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{puuid}"
     print(f"[Riot] GET live game ({region})")
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
