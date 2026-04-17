@@ -26,9 +26,10 @@ async def get_summoner(puuid: str, region: str):
     url = f"https://{region}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
     async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
         async with s.get(url, headers=headers()) as r:
-            if r.status == 200:
-                return await r.json()
-            print(f"  ✗ HTTP {r.status} for {puuid[:8]}... ({region})")
+            data = await r.json()
+            if r.status == 200 and "id" in data:
+                return data
+            print(f"  ✗ HTTP {r.status}: {data}")
             return None
 
 async def main():
