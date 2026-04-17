@@ -390,7 +390,9 @@ class Commands(commands.Cog):
         cleared_shame = kingdom.clear_shame(winner)
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
         print(f"[Joust] {winner['house']['name']} beat {loser['house']['name']} for {wager} gold")
-        narr        = await narration.narrate_duel_result(winner["house"]["name"], loser["house"]["name"], wager)
+        print(f"[Joust] Requesting narration...", flush=True)
+        narr = await narration.narrate_duel_result(winner["house"]["name"], loser["house"]["name"], wager)
+        print(f"[Joust] Narration done, sending embed...", flush=True)
         winner_prob = f"{c_prob*100:.0f}%" if challenger_wins else f"{(1-c_prob)*100:.0f}%"
         loser_prob  = f"{(1-c_prob)*100:.0f}%" if challenger_wins else f"{c_prob*100:.0f}%"
         embed = discord.Embed(title="🏇  Joust Resolved!", description=f"*{narr}*", color=0xF39C12)

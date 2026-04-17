@@ -25,12 +25,18 @@ async def _ask(system: str, user: str, max_tokens: int = 220) -> str:
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
-    async with aiohttp.ClientSession() as s:
-        async with s.post(API_URL, headers=headers, json=body) as r:
-            if r.status != 200:
-                return ""
-            data = await r.json()
-            return data["content"][0]["text"].strip()
+    try:
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.post(API_URL, headers=headers, json=body) as r:
+                if r.status != 200:
+                    print(f"[Narration] API error {r.status}", flush=True)
+                    return ""
+                data = await r.json()
+                return data["content"][0]["text"].strip()
+    except Exception as e:
+        print(f"[Narration] Error: {e}", flush=True)
+        return ""
 
 SYSTEM_HERALD = (
     "You are the trash-talking announcer for a League of Legends friend group Discord server. "
