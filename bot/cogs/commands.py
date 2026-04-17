@@ -47,16 +47,7 @@ class Commands(commands.Cog):
         puuid = account["puuid"]
         print(f"[Register] Got puuid: {puuid[:8]}...")
 
-        summoner = await riot.get_summoner_by_puuid(puuid, region)
-        if not summoner:
-            print(f"[Register] Failed: summoner not found")
-            await interaction.followup.send("Could not fetch summoner data.")
-            return
-
-        summoner_id = summoner["id"]
-        print(f"[Register] Got summoner id")
-
-        rank_raw = await riot.get_rank(summoner_id, region)
+        rank_raw = await riot.get_rank(puuid, region)
         print(f"[Register] Rank: {rank_raw.get('tier') if rank_raw else 'Unranked'}")
 
         print(f"[Register] Fetching match history...")
@@ -74,7 +65,7 @@ class Commands(commands.Cog):
 
         house   = kingdom.generate_house(champ_pool)
         riot_id = f"{game_name}#{tag_line}"
-        entry   = kingdom.new_user_entry(riot_id, puuid, summoner_id, region.lower(), house, rank_raw)
+        entry   = kingdom.new_user_entry(riot_id, puuid, region.lower(), house, rank_raw)
 
         state.user_data[uid] = entry
         storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
@@ -173,14 +164,11 @@ class Commands(commands.Cog):
             return
 
         user = state.user_data[uid]
-        if not user.get("summoner_id"):
-            await interaction.response.send_message("No summoner data for this lord.", ephemeral=True)
-            return
 
         await interaction.response.defer(thinking=True)
         print(f"[LiveGame] Fetching game for {user['riot_id']}")
 
-        game = await riot.get_live_game(user["summoner_id"], user["region"])
+        game = await riot.get_live_game(user["puuid"], user["region"])
         if not game:
             await interaction.followup.send(f"**{user['house']['name']}** is not currently in a game.")
             return

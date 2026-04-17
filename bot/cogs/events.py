@@ -196,7 +196,7 @@ class Events(commands.Cog):
         await asyncio.sleep(15)
 
         # Fetch game intel
-        game_data = await riot.get_live_game(user.get("summoner_id"), user["region"]) if user.get("summoner_id") else None
+        game_data = await riot.get_live_game(user["puuid"], user["region"])
         streak    = await riot.get_recent_streak(user["puuid"], user["region"], count=5)
 
         # Build streak text
@@ -312,7 +312,7 @@ class Events(commands.Cog):
         result = "WIN" if match_delta["won"] else "LOSS"
         kda = f"{participant.get('kills',0)}/{participant.get('deaths',0)}/{participant.get('assists',0)}"
         print(f"[Match] {user['house']['name']} — {result} on {champ} ({kda}) | {match_delta['delta']:+d} gold", flush=True)
-        new_rank = await riot.get_rank(user["summoner_id"], user["region"]) if user.get("summoner_id") else None
+        new_rank    = await riot.get_rank(user["puuid"], user["region"])
         rank_change = kingdom.apply_rank_change(user, new_rank)
 
         # ── Narration ─────────────────────────────────────────────────────

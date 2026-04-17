@@ -62,23 +62,21 @@ async def get_summoner_by_puuid(puuid: str, region: str) -> Optional[dict]:
     except Exception as e:
         print(f"[Riot] Summoner error: {e}"); return None
 
-async def get_rank(summoner_id: str, region: str) -> Optional[dict]:
-    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}"
+async def get_rank(puuid: str, region: str) -> Optional[dict]:
+    url = f"https://{region}.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}"
     print(f"[Riot] GET rank ({region})")
     try:
-        async with aiohttp.ClientSession() as s:
+        async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
             async with s.get(url, headers=_headers()) as r:
                 print(f"[Riot] Rank status: {r.status}")
                 if r.status != 200:
                     return None
-                entries = await asyncio.wait_for(r.json(), timeout=8)
+                entries = await r.json()
                 for e in entries:
                     if e.get("queueType") == "RANKED_SOLO_5x5":
                         return e
                 print(f"[Riot] No solo queue rank found")
                 return None
-    except asyncio.TimeoutError:
-        print(f"[Riot] Rank timed out — returning None"); return None
     except Exception as e:
         print(f"[Riot] Rank error: {e}"); return None
 
@@ -109,8 +107,8 @@ async def get_match(match_id: str, region: str) -> Optional[dict]:
     except Exception as e:
         print(f"[Riot] Match error: {e}"); return None
 
-async def get_live_game(summoner_id: str, region: str) -> Optional[dict]:
-    url = f"https://{region}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/{summoner_id}"
+async def get_live_game(puuid: str, region: str) -> Optional[dict]:
+    url = f"https://{region}.api.riotgames.com/lol/spectator/v5/active-games/by-puuid/{puuid}"
     print(f"[Riot] GET live game ({region})")
     try:
         async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
