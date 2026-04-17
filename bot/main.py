@@ -49,6 +49,9 @@ async def create_bot():
             storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
             print(f"[Court] Migrated summoner_id for {migrated} user(s)", flush=True)
 
+        for uid, user in state.user_data.items():
+            print(f"[Debug] {user['house']['name']}: summoner_id={user.get('summoner_id')!r}", flush=True)
+
         for cog in COGS:
             try:
                 await bot.load_extension(cog)
