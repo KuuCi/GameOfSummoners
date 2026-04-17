@@ -36,7 +36,13 @@ async def create_bot():
         await riot.load_champion_map()
 
         for cog in COGS:
-            await bot.load_extension(cog)
+            try:
+                await bot.load_extension(cog)
+                print(f"[Court] Loaded {cog}", flush=True)
+            except Exception as e:
+                print(f"[Court] Failed to load {cog}: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
 
         synced = await bot.tree.sync()
         for guild in bot.guilds:
