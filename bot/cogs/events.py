@@ -312,7 +312,7 @@ class Events(commands.Cog):
         result = "WIN" if match_delta["won"] else "LOSS"
         kda = f"{participant.get('kills',0)}/{participant.get('deaths',0)}/{participant.get('assists',0)}"
         print(f"[Match] {user['house']['name']} — {result} on {champ} ({kda}) | {match_delta['delta']:+d} gold", flush=True)
-        new_rank    = await riot.get_rank(user["summoner_id"], user["region"])
+        new_rank = await riot.get_rank(user["summoner_id"], user["region"]) if user.get("summoner_id") else None
         rank_change = kingdom.apply_rank_change(user, new_rank)
 
         # ── Narration ─────────────────────────────────────────────────────
