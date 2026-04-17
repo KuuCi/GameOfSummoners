@@ -196,7 +196,7 @@ class Events(commands.Cog):
         await asyncio.sleep(15)
 
         # Fetch game intel
-        game_data = await riot.get_live_game(user["summoner_id"], user["region"])
+        game_data = await riot.get_live_game(user.get("summoner_id"), user["region"]) if user.get("summoner_id") else None
         streak    = await riot.get_recent_streak(user["puuid"], user["region"], count=5)
 
         # Build streak text

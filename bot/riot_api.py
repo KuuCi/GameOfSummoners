@@ -215,22 +215,8 @@ async def analyze_participant(puuid: str, champ_id: int, region: str) -> dict:
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
-def extract_participant(match: dict, puuid: str) -> Optional[dict]:
-    for p in match.get("info", {}).get("participants", []):
-        if p.get("puuid") == puuid:
-            return p
-    return None
-
-def format_kda(p: dict) -> str:
-    k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
-    ratio = (k + a) / max(d, 1)
-    return f"{k}/{d}/{a} ({ratio:.2f} KDA)"
-
 async def get_recent_streak(puuid: str, region: str, count: int = 5) -> dict:
-    """
-    Returns streak info for the war effort embed.
-    { type: 'win'|'loss'|None, streak: int, record: str }
-    """
+    """Returns { type: 'win'|'loss'|None, streak: int, record: str }"""
     routing = _route(region)
     ids_url = (
         f"https://{routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
@@ -242,11 +228,11 @@ async def get_recent_streak(puuid: str, region: str, count: int = 5) -> dict:
                 match_ids = await r.json() if r.status == 200 else []
     except Exception:
         match_ids = []
- 
+
     if not match_ids:
         return {"type": None, "streak": 0, "record": ""}
- 
-    async def _fetch(mid):
+
+    async def _fetch(mid: str) -> Optional[dict]:
         try:
             async with aiohttp.ClientSession(timeout=TIMEOUT) as s:
                 async with s.get(
@@ -256,7 +242,7 @@ async def get_recent_streak(puuid: str, region: str, count: int = 5) -> dict:
                     return await r.json() if r.status == 200 else None
         except Exception:
             return None
- 
+
     matches = await asyncio.gather(*[_fetch(mid) for mid in match_ids])
     results = []
     for m in matches:
@@ -266,19 +252,31 @@ async def get_recent_streak(puuid: str, region: str, count: int = 5) -> dict:
             if p.get("puuid") == puuid:
                 results.append(p.get("win", False))
                 break
- 
+
     if not results:
         return {"type": None, "streak": 0, "record": ""}
- 
+
     wins   = sum(results)
     losses = len(results) - wins
     record = f"{wins}W {losses}L last {len(results)}"
- 
+
     kind, streak = results[0], 1
     for r in results[1:]:
         if r == kind:
             streak += 1
         else:
             break
- 
+
     return {"type": "win" if kind else "loss", "streak": streak, "record": record}
+
+
+def extract_participant(match: dict, puuid: str) -> Optional[dict]:
+    for p in match.get("info", {}).get("participants", []):
+        if p.get("puuid") == puuid:
+            return p
+    return None
+
+def format_kda(p: dict) -> str:
+    k, d, a = p.get("kills", 0), p.get("deaths", 0), p.get("assists", 0)
+    ratio = (k + a) / max(d, 1)
+    return f"{k}/{d}/{a} ({ratio:.2f} KDA)"

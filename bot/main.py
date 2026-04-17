@@ -35,6 +35,18 @@ async def create_bot():
         )
         await riot.load_champion_map()
 
+        # Migrate existing users missing summoner_id
+        migrated = 0
+        for uid, user in state.user_data.items():
+            if not user.get("summoner_id") and user.get("puuid") and user.get("region"):
+                summoner = await riot.get_summoner_by_puuid(user["puuid"], user["region"])
+                if summoner:
+                    user["summoner_id"] = summoner["id"]
+                    migrated += 1
+        if migrated:
+            storage.persist_all(state.user_data, state.announcement_channels, state.shame_channels)
+            print(f"[Court] Migrated summoner_id for {migrated} user(s)", flush=True)
+
         for cog in COGS:
             try:
                 await bot.load_extension(cog)
