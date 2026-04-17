@@ -39,7 +39,7 @@ def generate_house(champion_pool: list[str]) -> dict:
         flavor = "Their origins are shrouded in mystery."
     return {"name": name, "motto": motto, "sigil": sigil, "color": color, "flavor": flavor}
 
-def new_user_entry(riot_id: str, puuid: str,
+def new_user_entry(riot_id: str, puuid: str, summoner_id: str,
                    region: str, house: dict, rank: dict | None) -> dict:
     tier     = rank.get("tier", "UNRANKED")    if rank else "UNRANKED"
     division = rank.get("rank", "")            if rank else ""
@@ -47,6 +47,7 @@ def new_user_entry(riot_id: str, puuid: str,
     return {
         "riot_id":       riot_id,
         "puuid":         puuid,
+        "summoner_id":   summoner_id,
         "region":        region,
         "house":         house,
         "gold":          STARTING_GOLD,

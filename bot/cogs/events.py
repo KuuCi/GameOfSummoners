@@ -195,9 +195,8 @@ class Events(commands.Cog):
         # Give the spectator API a moment to register the game
         await asyncio.sleep(15)
 
-        # Fetch game intel in parallel
-        await riot._ensure_champion_map()
-        game_data = await riot.get_active_game(user["puuid"], user["region"])
+        # Fetch game intel
+        game_data = await riot.get_live_game(user["summoner_id"], user["region"])
         streak    = await riot.get_recent_streak(user["puuid"], user["region"], count=5)
 
         # Build streak text
@@ -217,7 +216,7 @@ class Events(commands.Cog):
             blue = []
             red  = []
             for p in game_data["participants"]:
-                champ_name = riot.champion_name_by_id(p.get("championId", 0)) or "?"
+                champ_name = riot.champion_name(p.get("championId", 0)) or "?"
                 puuid = p.get("puuid", "")
                 # Mark our player
                 marker = " ⭐" if puuid == user["puuid"] else ""
@@ -313,7 +312,7 @@ class Events(commands.Cog):
         result = "WIN" if match_delta["won"] else "LOSS"
         kda = f"{participant.get('kills',0)}/{participant.get('deaths',0)}/{participant.get('assists',0)}"
         print(f"[Match] {user['house']['name']} — {result} on {champ} ({kda}) | {match_delta['delta']:+d} gold", flush=True)
-        new_rank    = await riot.get_rank(user["puuid"], user["region"])
+        new_rank    = await riot.get_rank(user["summoner_id"], user["region"])
         rank_change = kingdom.apply_rank_change(user, new_rank)
 
         # ── Narration ─────────────────────────────────────────────────────
