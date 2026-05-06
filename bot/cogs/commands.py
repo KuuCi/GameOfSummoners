@@ -364,6 +364,10 @@ class Commands(commands.Cog):
         wager = duel["wager"]
         if state.user_data[uid]["gold"] < wager:
             await interaction.response.send_message("You don't have enough gold to cover the wager.", ephemeral=True); return
+
+        # All ephemeral guard checks passed — defer before any slow work.
+        await interaction.response.defer()
+
         c_power = kingdom.compute_power(state.user_data[challenger_id])
         d_power = kingdom.compute_power(state.user_data[uid])
         total   = c_power + d_power
@@ -389,7 +393,7 @@ class Commands(commands.Cog):
         embed.add_field(name="😔 Shame",    value=f'"{shame}" — 24h lockout or win a joust to clear', inline=False)
         if cleared_shame:
             embed.add_field(name="✨ Redeemed", value=f'{winner["house"]["name"]} shed the title "{cleared_shame}"', inline=False)
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # ── /steal ────────────────────────────────────────────────────────────
 
